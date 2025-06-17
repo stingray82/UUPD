@@ -1,0 +1,16 @@
+This is just an example plugin to test updates
+
+== Description ==
+
+This is just an example plugin to test updates
+
+== Installation ==
+
+1. Upload the `example-plugin` folder to the `/wp-content/plugins/` directory.
+2. Activate the plugin through the 'Plugins' menu in WordPress.
+3. Update as needed
+
+== Frequently Asked Questions ==
+
+= How do I modify the settings =
+There ae no settings on this plugin

@@ -1,0 +1,2 @@
+This plugin’s metadata is at:
+https://raw.githubusercontent.com/YOUR_USER/example-plugin/main/uupd/index.json
