@@ -78,6 +78,8 @@ REM
 REM Example usage:
 REM     echo Running Deployment Script v1.1
 REM ─────────────────────────────────────────────────────
+
+
 REM Script Version 1.1
 
 REM ─────────────────────────────────────────────────────
@@ -133,6 +135,8 @@ php "%GENERATOR_SCRIPT%" ^
     "%GITHUB_USER%" ^
     "%CDN_PATH%" ^
     "%REPO_NAME%" ^
+    "%REPO_NAME%" ^
+    "%STATIC_FILE%" ^
     "%ZIP_NAME%"
 
 IF EXIST "%STATIC_SUBFOLDER%\index.json" (

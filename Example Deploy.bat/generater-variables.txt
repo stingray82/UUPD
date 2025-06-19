@@ -1,0 +1,29 @@
+REM Call the index generator PHP script with all required arguments
+php "%GENERATOR_SCRIPT%" ^
+
+    REM Main plugin PHP file (contains headers like Version, Requires PHP, etc.)
+    "%PLUGIN_FILE%" ^         :: argv[1]  → $plugin_file
+
+    REM Changelog file (used to extract version history)
+    "%CHANGELOG_FILE%" ^      :: argv[2]  → $changelog_file
+
+    REM Directory to output the generated index.json and other static assets
+    "%STATIC_SUBFOLDER%" ^    :: argv[3]  → $output_dir
+
+    REM GitHub username (for constructing download URLs)
+    "%GITHUB_USER%" ^         :: argv[4]  → $github_user
+
+    REM Base CDN path for banners/icons (usually raw.githubusercontent.com)
+    "%CDN_PATH%" ^            :: argv[5]  → $static_domain
+
+    REM Plugin slug (normally same as repo, lowercase and hyphenated)
+    "%REPO_NAME%" ^           :: argv[6]  → $slug
+
+    REM GitHub repository name (case-sensitive, no .zip!)
+    "%REPO_NAME%" ^           :: argv[7]  → $repo_name
+
+    REM Optional static readme fragment
+    "%STATIC_FILE%" ^         :: argv[8]  → $static_file
+
+    REM Actual ZIP filename used for GitHub release downloads
+    "%ZIP_NAME%"              :: argv[9]  → $zip_filename

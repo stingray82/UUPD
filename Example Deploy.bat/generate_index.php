@@ -17,6 +17,7 @@ $static_domain  = rtrim(get_arg_or_env(5, 'CDN_PATH'), "/");
 $slug           = get_arg_or_env(6, 'REPO_NAME');
 $repo_name      = get_arg_or_env(7, 'REPO_NAME');
 $static_file    = get_arg_or_env(8, 'STATIC_FILE');
+$zip_filename = get_arg_or_env(9, 'ZIP_NAME');
 
 if (!file_exists($plugin_file)) exit("\n\u{274C} Plugin file missing: $plugin_file\n");
 if (!file_exists($changelog_file)) exit("\n\u{274C} Changelog file missing: $changelog_file\n");
@@ -29,8 +30,6 @@ $headers = read_plugin_headers($plugin_file);
 if (empty($headers['Version']) || empty($headers['Plugin Name'])) {
     exit("\n\u{274C} Missing Version or Plugin Name in headers.\n");
 }
-
-$zip_filename = $slug . '.zip';
 
 $sections = parse_readme_sections($static_file);
 $sections['changelog'] = parse_changelog($changelog_file);
