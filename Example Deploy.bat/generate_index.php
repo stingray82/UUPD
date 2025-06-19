@@ -48,7 +48,8 @@ $json = [
     'last_updated'    => date('Y-m-d H:i:s'),
     'download_url'    => "https://github.com/{$github_user}/{$repo_name}/releases/latest/download/{$zip_filename}",
     'banners' => [
-        'low' => "$static_domain/banner-772x250.png"
+        'low'  => "$static_domain/banner-772x250.png",
+        'high' => "$static_domain/banner-1544x500.png"
     ],
     'icons' => [
         '1x' => "$static_domain/icon-128.png",

@@ -1,88 +1,98 @@
 @echo off
 setlocal enabledelayedexpansion
 
-REM ─────────────────────────────────────────────────────────────
-REM PROJECT-SPECIFIC CONFIGURATION
-REM ─────────────────────────────────────────────────────────────
+REM ─────────────────────────────────────────────────────
+REM CONFIGURATION
+REM ─────────────────────────────────────────────────────
 
-REM Human-friendly name of your plugin
-SET "PLUGIN_NAME=Example Plugin"
+REM Display name of the plugin (used for reference only, not operational)
+SET "PLUGIN_NAME=My Plugin Name"
 
-REM Comma-separated tags for WordPress.org-style readme.txt
-SET "PLUGIN_TAGS=custom, tools, utility"
+REM Tags/keywords related to the plugin (can be used in readme or deployment metadata)
+SET "PLUGIN_TAGS=Tag1, Tag2, ExampleTag"
 
-REM Full path to a PHP script that injects headers into your plugin file (optional)
-SET "HEADER_SCRIPT=C:\Path\To\myplugin_headers.php"
+REM Path to a PHP script that inserts or updates headers inside the main plugin file
+SET "HEADER_SCRIPT=C:\Path\To\Your\Scripts\insert_headers.php"
 
-REM Absolute path to the plugin's folder (should contain the main plugin file)
-SET "PLUGIN_DIR=C:\Path\To\your-plugin-folder"
+REM Full path to the plugin's root directory
+SET "PLUGIN_DIR=C:\Path\To\Your\Plugin\my-plugin-folder\"
 
-REM Normalize trailing slash from PLUGIN_DIR (if present)
+REM Ensure trailing backslash is removed from PLUGIN_DIR
 IF "%PLUGIN_DIR:~-1%"=="\" SET "PLUGIN_DIR=%PLUGIN_DIR:~0,-1%"
 
-REM Path to your main plugin file (e.g., plugin-folder\plugin-name.php)
-SET "PLUGIN_FILE=%PLUGIN_DIR%\example-plugin.php"
+REM Path to the main plugin file (entry point with plugin headers)
+SET "PLUGIN_FILE=%PLUGIN_DIR%\my-plugin.php"
 
-REM Changelog file used for GitHub release notes and readme
-SET "CHANGELOG_FILE=C:\Path\To\changelogs\example-plugin.txt"
+REM Path to the changelog file used for the plugin version history
+SET "CHANGELOG_FILE=changelog.txt"
 
-REM Static section of the readme file (e.g., Description, Installation, FAQ)
+REM Path to a static readme section that may be merged or used in generation
 SET "STATIC_FILE=static.txt"
 
-REM Full readme output path (this will be overwritten on build)
+REM Paths to WordPress readme.txt (official format) and a temporary edited copy
 SET "README=%PLUGIN_DIR%\readme.txt"
 SET "TEMP_README=%PLUGIN_DIR%\readme_temp.txt"
 
-REM Optional: Path to copy the final ZIP to a private server (only used if DEPLOY_TARGET=private)
-SET "DEST_DIR=D:\Path\To\private-server\plugin-updates"
+REM Optional: destination directory for build artifacts (not currently used)
+SET "DEST_DIR="
 
-REM Choose between `github` (default) or `private` deployment target
+REM Deployment type (can be `github` or `private` for custom distribution)
 SET "DEPLOY_TARGET=github"
 
-REM ─────────────────────────────────────────────────────────────
-REM GITHUB DEPLOYMENT SETTINGS
-REM ─────────────────────────────────────────────────────────────
+REM ─────────────────────────────────────────────────────
+REM GITHUB SETTINGS (Used if DEPLOY_TARGET=github)
+REM ─────────────────────────────────────────────────────
 
 REM Format: username/repository
-SET "GITHUB_REPO=yourusername/example-plugin"
+SET "GITHUB_REPO=username/my-plugin-repo"
 
-REM Path to GitHub personal access token (required for uploading releases)
-SET "TOKEN_FILE=C:\Path\To\token.txt"
+REM Path to a file containing a GitHub Personal Access Token (for publishing releases or uploads)
+SET "TOKEN_FILE=C:\Path\To\Your\Scripts\github_token.txt"
+
+REM Read token into a variable from file
 SET /P GITHUB_TOKEN=<"%TOKEN_FILE%"
 
-REM The filename of the ZIP that will be created
-SET "ZIP_NAME=example-plugin.zip"
+REM Name of the plugin ZIP file that will be downloaded from GitHub releases
+SET "ZIP_NAME=my-plugin.zip"
 
-REM ─────────────────────────────────────────────────────────────
-REM STATIC JSON + IMAGE GENERATION FOR UUPD (index.json)
-REM ─────────────────────────────────────────────────────────────
+REM ─────────────────────────────────────────────────────
+REM JSON INDEX GENERATION SETTINGS (For auto-update systems)
+REM ─────────────────────────────────────────────────────
 
-REM Path to the PHP script that generates the index.json metadata
-SET "GENERATOR_SCRIPT=C:\Path\To\generate_index.php"
+REM Path to the PHP script that generates index.json or other metadata files
+SET "GENERATOR_SCRIPT=C:\Path\To\Your\Scripts\generate_index.php"
 
-REM Root of the git repository (used to place the uupd/ folder one level above plugin)
+REM Root of the repo (parent of PLUGIN_DIR); used to locate where static files will be saved
 SET "REPO_ROOT=%PLUGIN_DIR%\.."
 
-REM Folder that will contain index.json and assets like banners/icons
+REM Subfolder (e.g., uupd) where static index files like index.json will be saved
+REM Escapes backslashes and appends "\uupd"
 SET "STATIC_SUBFOLDER=%REPO_ROOT:\=\\%\uupd"
 
-REM Script Version
-REM (Optional: useful for debugging or logging)
-SET "SCRIPT_VERSION=1.1"
+REM ─────────────────────────────────────────────────────
+REM Script Version: Change this when the deployment script is updated
+REM ─────────────────────────────────────────────────────
+REM Helps you track which version of the script is in use
+REM Can also be output for debugging or validation
+REM
+REM Example usage:
+REM     echo Running Deployment Script v1.1
+REM ─────────────────────────────────────────────────────
+REM Script Version 1.1
 
 REM ─────────────────────────────────────────────────────
 REM VERIFY REQUIRED FILES
 REM ─────────────────────────────────────────────────────
 IF NOT EXIST "%PLUGIN_FILE%" (
-    echo  Plugin file not found: %PLUGIN_FILE%
+    echo ❌ Plugin file not found: %PLUGIN_FILE%
     pause & exit /b
 )
 IF NOT EXIST "%CHANGELOG_FILE%" (
-    echo  Changelog file not found: %CHANGELOG_FILE%
+    echo ❌ Changelog file not found: %CHANGELOG_FILE%
     pause & exit /b
 )
 IF NOT EXIST "%STATIC_FILE%" (
-    echo  Static readme file not found: %STATIC_FILE%
+    echo ❌ Static readme file not found: %STATIC_FILE%
     pause & exit /b
 )
 
@@ -100,7 +110,7 @@ for /f "tokens=2* delims=:" %%A in ('findstr /C:"Requires PHP:" "%PLUGIN_FILE%"'
 REM ─────────────────────────────────────────────────────
 REM GENERATE STATIC index.json FILE FOR GITHUB DELIVERY
 REM ─────────────────────────────────────────────────────
-echo  Generating index.json for GitHub-based delivery...
+echo 🧾 Generating index.json for GitHub-based delivery...
 
 REM Extract GitHub username and repo from GITHUB_REPO
 FOR /F "tokens=1,2 delims=/" %%A IN ("%GITHUB_REPO%") DO (
@@ -123,12 +133,12 @@ php "%GENERATOR_SCRIPT%" ^
     "%GITHUB_USER%" ^
     "%CDN_PATH%" ^
     "%REPO_NAME%" ^
-    "%REPO_NAME%"
+    "%ZIP_NAME%"
 
 IF EXIST "%STATIC_SUBFOLDER%\index.json" (
-    echo  index.json generated → %STATIC_SUBFOLDER%\index.json
+    echo ✅ index.json generated → %STATIC_SUBFOLDER%\index.json
 ) ELSE (
-    echo  Failed to generate index.json
+    echo ❌ Failed to generate index.json
 )
 
 
@@ -167,9 +177,9 @@ git diff --cached --quiet
 IF %ERRORLEVEL% EQU 1 (
     git commit -m "Version %version% Release"
     git push origin main
-    echo Git commit and push complete.
+    echo ✅ Git commit and push complete.
 ) ELSE (
-    echo  No changes to commit.
+    echo ⚠️ No changes to commit.
 )
 popd
 
@@ -186,17 +196,17 @@ SET "ZIP_FILE=%PARENT_DIR%%ZIP_NAME%"
 pushd "%PARENT_DIR%"
 "%SEVENZIP%" a -tzip "%ZIP_FILE%" "%FOLDER_NAME%"
 popd
-echo  Zipped to: %ZIP_FILE%
+echo ✅ Zipped to: %ZIP_FILE%
 
 REM ─────────────────────────────────────────────────────
 REM DEPLOY LOGIC
 REM ─────────────────────────────────────────────────────
 IF /I "%DEPLOY_TARGET%"=="private" (
-    echo  Deploying to private server...
+    echo 🔄 Deploying to private server...
     copy "%ZIP_FILE%" "%DEST_DIR%"
-    echo  Copied to %DEST_DIR%
+    echo ✅ Copied to %DEST_DIR%
 ) ELSE IF /I "%DEPLOY_TARGET%"=="github" (
-    echo  Deploying to GitHub...
+    echo 🚀 Deploying to GitHub...
 
     setlocal enabledelayedexpansion
     set "RELEASE_TAG=v%version%"
@@ -243,7 +253,7 @@ IF /I "%DEPLOY_TARGET%"=="private" (
         )
         set "RELEASE_ID=!RELEASE_ID: =!"
         set "RELEASE_ID=!RELEASE_ID:,=!"
-        echo Release already exists. Updating body...
+        echo 📝 Release already exists. Updating body...
 
         curl -s -X PATCH "https://api.github.com/repos/%GITHUB_REPO%/releases/!RELEASE_ID!" ^
             -H "Authorization: token %GITHUB_TOKEN%" ^
@@ -267,12 +277,12 @@ IF /I "%DEPLOY_TARGET%"=="private" (
     )
 
     IF NOT DEFINED RELEASE_ID (
-        echo Could not determine release ID.
+        echo ❌ Could not determine release ID.
         type "%TEMP%\github_release_response.json"
         exit /b
     )
 
-    echo  Using Release ID: !RELEASE_ID!
+    echo ✅ Using Release ID: !RELEASE_ID!
 
     curl -s -X POST "https://uploads.github.com/repos/%GITHUB_REPO%/releases/!RELEASE_ID!/assets?name=%ZIP_NAME%" ^
         -H "Authorization: token %GITHUB_TOKEN%" ^
@@ -284,5 +294,5 @@ IF /I "%DEPLOY_TARGET%"=="private" (
 )
 
 echo.
-echo Deployment complete → %DEPLOY_TARGET%
+echo ✅ Deployment complete → %DEPLOY_TARGET%
 pause
