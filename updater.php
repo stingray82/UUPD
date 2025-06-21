@@ -148,8 +148,8 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
             $key  = rawurlencode( $c['key'] );
             $host = rawurlencode( wp_parse_url( untrailingslashit( home_url() ), PHP_URL_HOST ) );
             $separator = strpos( $c['server'], '?' ) === false ? '?' : '&';
-            $url  = rtrim( $c['server'], '/' ) 
-                  . $separator . "action=get_metadata&slug={$slug}&key={$key}&domain={$host}";
+            $url = ( str_ends_with( $c['server'], '.json' ) ? $c['server'] : untrailingslashit( $c['server'] ) )
+     . $separator . "action=get_metadata&slug={$slug}&key={$key}&domain={$host}";
 
 
             $this->log( "→ Fetching metadata: {$url}" );
