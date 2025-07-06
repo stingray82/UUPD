@@ -105,7 +105,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
 
     class UUPD_Updater_V1 {
 
-        const VERSION = '1.2.4'; // Change as needed
+        const VERSION = '1.2.5'; // Change as needed
 
         /** @var array Configuration settings */
         private $config;
@@ -145,7 +145,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
         private function fetch_remote() {
             $c    = $this->config;
             $slug = rawurlencode( $c['slug'] );
-            $key  = rawurlencode( $c['key'] );
+            $key  = rawurlencode( $c['key'] ?? '' );
             $host = rawurlencode( wp_parse_url( untrailingslashit( home_url() ), PHP_URL_HOST ) );
             $separator = strpos( $c['server'], '?' ) === false ? '?' : '&';
             $url = ( str_ends_with( $c['server'], '.json' ) ? $c['server'] : untrailingslashit( $c['server'] ) )
