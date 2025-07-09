@@ -108,7 +108,7 @@ This can be hosted anywhere:
 
 -   PHP endpoint (compatible with WP Update Server or similar)
 
-- 	Wordpress Site using the simple-update-server
+-   Wordpress Site using the simple-update-server
 
  
 
@@ -205,19 +205,20 @@ define( 'WP_DEBUG_LOG', true );
 
 Created by [Really Useful Plugins](https://reallyusefulplugins.com). Inspired by
 simplicity and the desire to empower developers with GitHub or private
-updates—without lock-in.  
-  
+updates—without lock-in.
+
 **You can view a dummy plugin using this exact updater and its used for testing
 new versions here:**
 
-Plugin:
-[https://github.com/stingray82/example-plugin/](https://github.com/stingray82/example-plugin/)  
+Plugin: <https://github.com/stingray82/example-plugin/>  
 Updates:
-[https://raw.githubusercontent.com/stingray82/example-plugin/main/uupd/index.json](https://raw.githubusercontent.com/stingray82/example-plugin/main/uupd/index.json)
+<https://raw.githubusercontent.com/stingray82/example-plugin/main/uupd/index.json>
 
  
 
- 
+Please if your editing the main update scope it read this [article
+here](https://techarticles.co.uk/why-rescoping-is-important-uupd/) for
+information and details on why you should scope if your not using standard
 
  
 
