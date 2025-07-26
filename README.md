@@ -28,8 +28,7 @@ WordPress.org.
 
  
 
-⚙️ Setup
--------
+⚙️ Setup------
 
  
 
@@ -48,13 +47,20 @@ add_action( 'plugins_loaded', function() {
     require_once __DIR__ . '/includes/updater.php';
 
     \UUPD\V1\UUPD_Updater_V1::register([
-        'plugin_file'   => plugin_basename(__FILE__),
-        'slug'          => 'example-plugin',
-        'name'          => 'Example Plugin',
-        'version'       => '1.0.0',
-        'server'        => 'https://raw.githubusercontent.com/your-user/example-plugin/main/uupd/',
+        'plugin_file'     => plugin_basename( __FILE__ ),      // Required: "my-plugin/my-plugin.php"
+        'slug'            => 'example-plugin',                 // Required: must match plugin slug or folder
+        'name'            => 'Example Plugin',                 // Required: shown in update UI
+        'version'         => '1.0.0',                          // Required: current plugin version
+        'server'          => 'https://raw.githubusercontent.com/your-user/example-plugin/main/uupd/',
+
+        // Optional keys:
+        'github_token'    => 'ghp_YourTokenHere',              // GitHub token (for private repos or rate limits)
+        'key'             => 'YourSecretKeyHere',              // Optional secret for private servers
+        'textdomain'      => 'example-plugin',                 // Optional, defaults to slug
+        'allow_prerelease'=> false,                            // Optional: allow beta/rc versions (default: false)
     ]);
 }, 1);
+
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
  
@@ -67,13 +73,24 @@ In your theme's `functions.php`:
 add_action( 'after_setup_theme', function() {
     require_once get_stylesheet_directory() . '/includes/updater.php';
 
-    \UUPD\V1\UUPD_Updater_V1::register([
-        'slug'      => 'example-theme',
-        'name'      => 'Example Theme',
-        'version'   => '1.0.0',
-        'server'    => 'https://raw.githubusercontent.com/your-user/example-theme/main/uupd/',
-    ]);
+    $updater_config = [
+        'slug'            => 'example-theme',                 // Required: theme folder name
+        'name'            => 'Example Theme',                 // Required: shown in update UI
+        'version'         => '1.0.0',                         // Required: should match style.css Version
+        'server'          => 'https://raw.githubusercontent.com/your-user/example-theme/main/uupd/',
+
+        // Optional keys:
+        'github_token'    => 'ghp_YourTokenHere',             // GitHub token (for private or rate-limited repos)
+        'key'             => 'YourSecretKeyHere',             // Optional secret key for private update servers
+        'textdomain'      => 'example-theme',                 // Optional, defaults to slug
+        'allow_prerelease'=> false,                           // Optional: enable beta/rc updates (default: false)
+    ];
+
+    add_action( 'admin_init', function() use ( $updater_config ) {
+        \UUPD\V1\UUPD_Updater_V1::register( $updater_config );
+    });
 });
+
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 📁 Hosting Your Update Metadata
@@ -198,7 +215,68 @@ define( 'WP_DEBUG_LOG', true );
 
 -   Compatible with WP-Cron, `wp_update_plugins()` and most deployment workflows
 
+
+
+V1.2.6 (Onwards)
+
+🧪 Prerelease Version Support
+-----------------------------
+
+You can opt-in to allow updates to prerelease versions like `1.2.3-beta`, `2.0.0-rc.1`, or `3.1.0-alpha`.
+
+This is disabled by default to protect stable installations.
+
+To enable prerelease updates, add this to your config:
+
+```php
+'allow_prerelease' => true,
+```
+
+You can also dynamically toggle it using constants, filters, or site options:
+
+```php
+'allow_prerelease' => defined('MY_PLUGIN_BETA_UPDATES') && MY_PLUGIN_BETA_UPDATES,
+```
+
+Only versions matching common prerelease patterns (`-alpha`, `-beta`, `-rc`) are affected.
+
+
+Dynamic Configuration (Advanced)
+-----------------------------------
+
+You can programmatically build your updater config to support staging, testing, or admin-controlled toggles:
+
+```php
+\UUPD\V1\UUPD_Updater_V1::register([
+    'plugin_file'      => plugin_basename( __FILE__ ),
+    'slug'             => 'my-plugin',
+    'name'             => 'My Plugin',
+    'version'          => MY_PLUGIN_VERSION,
+    'server'           => 'https://example.com/updates/',
+    'allow_prerelease' => get_option( 'my_plugin_allow_prerelease', false ),
+    'github_token'     => get_option( 'my_plugin_github_token' ),
+]);
+```
+
+You can create a simple checkbox in your plugin settings to toggle `allow_prerelease` for beta testers.
  
+🛡️ Security Tips
+----------------
+
+For private update servers or GitHub repos, consider these practices:
+
+- Use **HTTPS** for all update servers.
+- Avoid committing your `github_token` directly into public repositories.
+- Use `key` authentication for private update endpoints:
+
+```php
+'key' => 'your-secret-key',
+```
+
+- Limit write access to your `index.json` or deployment tools.
+- Rotate your GitHub token regularly and use a token with minimal required scopes.
+
+
 
 ✨ Credits
 ---------

@@ -49,6 +49,7 @@
  *            'server'        => 'https://github.com/user/repo',  // GitHub or private server
  *            'github_token'  => 'ghp_YourTokenHere',             // optional
  *            // 'textdomain' => 'my-plugin-textdomain',         // optional, defaults to 'slug'
+ *            // 'allow_prerelease'=> false, // Optional — default is false. Set to true to allow beta/RC updates.
  *        ];
  *
  *        \UUPD\V1\UUPD_Updater_V1::register( $updater_config );
@@ -73,6 +74,7 @@
  *            'server'       => 'https://github.com/user/repo',   // GitHub or private
  *            'github_token' => 'ghp_YourTokenHere',              // optional
  *            // 'textdomain' => 'my-theme-textdomain',
+ *            // 'allow_prerelease'=> false, // <--- NEW: optional, defaults to false
  *        ];
  *
  *        add_action( 'admin_init', function() use ( $updater_config ) {
@@ -129,7 +131,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
 
     class UUPD_Updater_V1 {
 
-        const VERSION = '1.2.5'; // Change as needed
+        const VERSION = '1.2.6'; // Change as needed
 
         /** @var array Configuration settings */
         private $config;
@@ -144,6 +146,8 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
          *   @type string 'key'         Your secret key.
          *   @type string 'server'      Base URL of your updater endpoint.
          *   @type string 'plugin_file' (optional) plugin_basename(__FILE__) for plugins.
+         *   @type bool 'allow_prerelease' (optional) Whether to allow updates to prerelease versions (e.g. -beta, -rc).
+         * 
          * }
          */
         public function __construct( array $config ) {
@@ -310,7 +314,15 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
             }
 
             // If no new version or bad data, say "no update"
-            if ( ! $meta || version_compare( $meta->version ?? '0.0.0', $current, '<=' ) ) {
+            $remote_version     = $meta->version ?? '0.0.0';
+            $allow_prerelease   = $this->config['allow_prerelease'] ?? false;
+
+            // If prerelease is not allowed and the version is a prerelease, skip
+            if (
+                ! $meta
+                || ( ! $allow_prerelease && preg_match( '/\d+\.\d+\.\d+-(alpha|beta|rc)[\.\d\-]*/i', $remote_version ) )
+                || version_compare( $current, $remote_version, '>=' )
+            ) {
                 $this->log( "Plugin '{$slug}' is up to date (v$current)" );
                 $trans->no_update[ $file ] = (object) [
                     'id'           => $file,
@@ -438,7 +450,15 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
         ];
 
         // Check if update is needed
-        if ( ! $meta || version_compare( $meta->version ?? '0.0.0', $current, '<=' ) ) {
+        $remote_version     = $meta->version ?? '0.0.0';
+        $allow_prerelease   = $this->config['allow_prerelease'] ?? false;
+
+        // If prerelease is not allowed and the version is a prerelease, skip
+        if (
+            ! $meta
+            || ( ! $allow_prerelease && preg_match( '/\d+\.\d+\.\d+-(alpha|beta|rc)[\.\d\-]*/i', $remote_version ) )
+            || version_compare( $current, $remote_version, '>=' )
+        ) {
             $this->log( " Theme '{$c['slug']}' is up to date (v$current)" );
             $trans->no_update[ $slug ] = (object) array_merge( $base_info, [
                 'new_version' => $current,
