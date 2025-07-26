@@ -28,7 +28,23 @@ WordPress.org.
 
  
 
-⚙️ Setup------
+📚 Additional Documentation
+--------------------------
+
+Looking for advanced usage, examples, or integration guides?
+
+We've moved detailed and optional developer information into the [docs/](./docs)
+folder for clarity.
+
+Here you'll find:
+
+These documents are optional but helpful if you're customizing UUPD for staging
+sites, beta testers, private update servers, or power-user workflows.
+
+ 
+
+⚙️ Setup
+-------
 
  
 
@@ -91,6 +107,8 @@ add_action( 'after_setup_theme', function() {
 });
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+ 
+
 📁 Hosting Your Update Metadata
 ------------------------------
 
@@ -140,52 +158,6 @@ Include this as the `server` in your UUPD config to allow automatic updates.
 
  
 
-📅 GitHub Release Integration
-----------------------------
-
--   Automatically fetches version and changelog from the latest release
-
--   Uploads ZIP via API (included in batch deployment script)
-
--   Works with or without GitHub authentication
-
-If you exceed GitHub API limits or use private repos:
-
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-add_filter( 'uupd/github_token_override', function( $token, $slug ) {
-    return 'your_github_pat';
-}, 10, 2 );
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
- 
-
-🔧 Command Line Build & Deployment
----------------------------------
-
-Use the included `deploy.bat` script to:
-
--   Extract plugin headers
-
--   Build `readme.txt`
-
--   Generate ZIP
-
--   Push to GitHub
-
--   Generate `index.json`
-
- 
-
-You can customize the script with:
-
--   `DEPLOY_TARGET=github` or `private`
-
--   Plugin source and changelog locations
-
--   Optional GitHub token loading
-
- 
-
 📈 Debugging
 -----------
 
@@ -212,80 +184,6 @@ define( 'WP_DEBUG_LOG', true );
 -   PHP 7.4+
 
 -   Compatible with WP-Cron, `wp_update_plugins()` and most deployment workflows
-
- 
-
-### **V1.2.6 (Onwards)**
-
- 
-
-🧪 Prerelease Version Support
-----------------------------
-
-You can opt-in to allow updates to prerelease versions like `1.2.3-beta`,
-`2.0.0-rc.1`, or `3.1.0-alpha`.
-
-This is disabled by default to protect stable installations.
-
-To enable prerelease updates, add this to your config:
-
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ php
-'allow_prerelease' => true,
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-You can also dynamically toggle it using constants, filters, or site options:
-
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ php
-'allow_prerelease' => defined('MY_PLUGIN_BETA_UPDATES') && MY_PLUGIN_BETA_UPDATES,
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Only versions matching common prerelease patterns (`-alpha`, `-beta`, `-rc`) are
-affected.
-
- 
-
-Dynamic Configuration (Advanced)
---------------------------------
-
-You can programmatically build your updater config to support staging, testing,
-or admin-controlled toggles:
-
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ php
-\UUPD\V1\UUPD_Updater_V1::register([
-    'plugin_file'      => plugin_basename( __FILE__ ),
-    'slug'             => 'my-plugin',
-    'name'             => 'My Plugin',
-    'version'          => MY_PLUGIN_VERSION,
-    'server'           => 'https://example.com/updates/',
-    'allow_prerelease' => get_option( 'my_plugin_allow_prerelease', false ),
-    'github_token'     => get_option( 'my_plugin_github_token' ),
-]);
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-You can create a simple checkbox in your plugin settings to toggle
-`allow_prerelease` for beta testers.
-
- 
-
-  🛡️ Security Tips
------------------
-
-For private update servers or GitHub repos, consider these practices:
-
--   Use **HTTPS** for all update servers.
-
--   Avoid committing your `github_token` directly into public repositories.
-
--   Use `key` authentication for private update endpoints:
-
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ php
-'key' => 'your-secret-key',
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
--   Limit write access to your `index.json` or deployment tools.
-
--   Rotate your GitHub token regularly and use a token with minimal required
-    scopes.
 
  
 
