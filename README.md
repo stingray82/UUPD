@@ -60,7 +60,6 @@ add_action( 'plugins_loaded', function() {
         'allow_prerelease'=> false,                            // Optional: allow beta/rc versions (default: false)
     ]);
 }, 1);
-
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
  
@@ -90,7 +89,6 @@ add_action( 'after_setup_theme', function() {
         \UUPD\V1\UUPD_Updater_V1::register( $updater_config );
     });
 });
-
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 📁 Hosting Your Update Metadata
@@ -215,38 +213,44 @@ define( 'WP_DEBUG_LOG', true );
 
 -   Compatible with WP-Cron, `wp_update_plugins()` and most deployment workflows
 
+ 
 
+### **V1.2.6 (Onwards)**
 
-V1.2.6 (Onwards)
+ 
 
 🧪 Prerelease Version Support
------------------------------
+----------------------------
 
-You can opt-in to allow updates to prerelease versions like `1.2.3-beta`, `2.0.0-rc.1`, or `3.1.0-alpha`.
+You can opt-in to allow updates to prerelease versions like `1.2.3-beta`,
+`2.0.0-rc.1`, or `3.1.0-alpha`.
 
 This is disabled by default to protect stable installations.
 
 To enable prerelease updates, add this to your config:
 
-```php
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ php
 'allow_prerelease' => true,
-```
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can also dynamically toggle it using constants, filters, or site options:
 
-```php
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ php
 'allow_prerelease' => defined('MY_PLUGIN_BETA_UPDATES') && MY_PLUGIN_BETA_UPDATES,
-```
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Only versions matching common prerelease patterns (`-alpha`, `-beta`, `-rc`) are affected.
+Only versions matching common prerelease patterns (`-alpha`, `-beta`, `-rc`) are
+affected.
 
+ 
 
 Dynamic Configuration (Advanced)
------------------------------------
+--------------------------------
 
-You can programmatically build your updater config to support staging, testing, or admin-controlled toggles:
+You can programmatically build your updater config to support staging, testing,
+or admin-controlled toggles:
 
-```php
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ php
 \UUPD\V1\UUPD_Updater_V1::register([
     'plugin_file'      => plugin_basename( __FILE__ ),
     'slug'             => 'my-plugin',
@@ -256,27 +260,34 @@ You can programmatically build your updater config to support staging, testing, 
     'allow_prerelease' => get_option( 'my_plugin_allow_prerelease', false ),
     'github_token'     => get_option( 'my_plugin_github_token' ),
 ]);
-```
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can create a simple checkbox in your plugin settings to toggle `allow_prerelease` for beta testers.
+You can create a simple checkbox in your plugin settings to toggle
+`allow_prerelease` for beta testers.
+
  
-🛡️ Security Tips
-----------------
+
+  🛡️ Security Tips
+-----------------
 
 For private update servers or GitHub repos, consider these practices:
 
-- Use **HTTPS** for all update servers.
-- Avoid committing your `github_token` directly into public repositories.
-- Use `key` authentication for private update endpoints:
+-   Use **HTTPS** for all update servers.
 
-```php
+-   Avoid committing your `github_token` directly into public repositories.
+
+-   Use `key` authentication for private update endpoints:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ php
 'key' => 'your-secret-key',
-```
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- Limit write access to your `index.json` or deployment tools.
-- Rotate your GitHub token regularly and use a token with minimal required scopes.
+-   Limit write access to your `index.json` or deployment tools.
 
+-   Rotate your GitHub token regularly and use a token with minimal required
+    scopes.
 
+ 
 
 ✨ Credits
 ---------
