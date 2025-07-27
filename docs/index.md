@@ -21,5 +21,7 @@ Explore the available topics below:
 
 -   [Security Recommendations](./security_tips.md)
 
+-   [UUPD Filters](./UUPD-Filters.md)
+
 These documents are optional. UUPD works out of the box, but these guides help
 extend it for more advanced workflows.

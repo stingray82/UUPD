@@ -151,6 +151,24 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
          * }
          */
         public function __construct( array $config ) {
+             // Allow plugins to override full config dynamically
+            $config = apply_filters( 'uupd/filter_config', $config );
+
+            // Allow override of prerelease flag (per-slug logic)
+            $config['allow_prerelease'] = apply_filters(
+                'uupd/allow_prerelease',
+                $config['allow_prerelease'] ?? false,
+                $config['slug'] ?? ''
+            );
+
+            // Allow overriding the server URL
+            $config['server'] = apply_filters(
+                'uupd/server_url',
+                $config['server'] ?? '',
+                $config['slug'] ?? ''
+            );
+
+
             $this->config = $config;
             $this->log( "✓ Using UUPD_Updater_V1 version " . self::VERSION );
             $this->register_hooks();
@@ -178,6 +196,9 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
             $separator = strpos( $c['server'], '?' ) === false ? '?' : '&';
             $url = ( str_ends_with( $c['server'], '.json' ) ? $c['server'] : untrailingslashit( $c['server'] ) )
                 . $separator . "action=get_metadata&slug={$slug}&key={$key}&domain={$host}";
+
+            // Allow full override of constructed URL
+            $url = apply_filters( 'uupd/remote_url', $url, $c['slug'], $c );
 
             $failure_cache_key = 'upd_' . $c['slug'] . '_error';
 
@@ -217,6 +238,9 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
                 do_action( 'uupd_metadata_fetch_failed', [ 'slug' => $c['slug'], 'server' => $c['server'], 'code' => 200, 'message' => 'Invalid JSON' ] );
                 return;
             }
+
+            // Allow developers to manipulate raw metadata before use
+            $meta = apply_filters( 'uupd/metadata_result', $meta, $slug, $c );
 
             set_transient( 'upd_' . $c['slug'], $meta, 6 * HOUR_IN_SECONDS );
             delete_transient( $failure_cache_key );
@@ -566,6 +590,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
         private function log( $msg ) {
             if ( apply_filters( 'updater_enable_debug', false ) ) {
                 error_log( "[Updater] {$msg}" );
+                do_action( 'uupd/log', $msg, $this->config['slug'] ?? '' );
             }
         }
 
