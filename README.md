@@ -75,7 +75,7 @@ add_action( 'plugins_loaded', function() {
         'textdomain'      => 'example-plugin',                 // Optional, defaults to slug
         'allow_prerelease'=> false,                            // Optional: allow beta/rc versions (default: false)
     ]);
-}, 1);
+}, 20); // You may increase this priority to allow filter overrides earlier
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
  
@@ -103,7 +103,7 @@ add_action( 'after_setup_theme', function() {
 
     add_action( 'admin_init', function() use ( $updater_config ) {
         \UUPD\V1\UUPD_Updater_V1::register( $updater_config );
-    });
+    } 20);  // Feel free to raise this priority for more override control
 });
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

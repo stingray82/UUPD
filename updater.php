@@ -123,6 +123,17 @@
  *  - Injects WordPress update data via native transients
  *  - Adds “View details” + “Check for updates” under plugin/theme row
  *  - Works seamlessly with `wp_update_plugins()` or `wp_update_themes()`
+ *
+ *
+ * Scoped Filters:
+ *   All filters like `uupd/server_url`, `uupd/remote_url`, etc., also support per-slug filters.
+ *   Example:
+ *      add_filter( 'uupd/server_url/my-plugin-slug', function( $url ) {
+ *          return 'https://mydomain.com/my-endpoint';
+ *      });
+ *
+ *
+ *
  */
 
 namespace UUPD\V1;
@@ -131,7 +142,15 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
 
     class UUPD_Updater_V1 {
 
-        const VERSION = '1.2.6'; // Change as needed
+        const VERSION = '1.3.0'; // Change as needed
+
+
+        private static function apply_filters_per_slug( $filter_base, $default, $slug ) {
+            $slug = sanitize_key( $slug );
+            $scoped = apply_filters( "{$filter_base}/{$slug}", $default, $slug );
+            return apply_filters( $filter_base, $scoped, $slug );
+        }
+
 
         /** @var array Configuration settings */
         private $config;
@@ -152,21 +171,23 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
          */
         public function __construct( array $config ) {
              // Allow plugins to override full config dynamically
-            $config = apply_filters( 'uupd/filter_config', $config );
+            $config = self::apply_filters_per_slug( 'uupd/filter_config', $config, $config['slug'] ?? '' );
 
             // Allow override of prerelease flag (per-slug logic)
-            $config['allow_prerelease'] = apply_filters(
+            $config['allow_prerelease'] = self::apply_filters_per_slug(
                 'uupd/allow_prerelease',
                 $config['allow_prerelease'] ?? false,
                 $config['slug'] ?? ''
             );
 
+
             // Allow overriding the server URL
-            $config['server'] = apply_filters(
+            $config['server'] = self::apply_filters_per_slug(
                 'uupd/server_url',
                 $config['server'] ?? '',
                 $config['slug'] ?? ''
             );
+
 
 
             $this->config = $config;
@@ -198,11 +219,14 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
                 . $separator . "action=get_metadata&slug={$slug}&key={$key}&domain={$host}";
 
             // Allow full override of constructed URL
-            $url = apply_filters( 'uupd/remote_url', $url, $c['slug'], $c );
+            $url = self::apply_filters_per_slug( 'uupd/remote_url', $url, $c['slug'] );
+
 
             $failure_cache_key = 'upd_' . $c['slug'] . '_error';
 
             $this->log( " Fetching metadata: {$url}" );
+            do_action( 'uupd/before_fetch_remote', $slug, $c );
+            $this->log( "→ Triggered action: uupd/before_fetch_remote for '{$slug}'" );
             $resp = wp_remote_get( $url, [
                 'timeout' => 15,
                 'headers' => [ 'Accept' => 'application/json' ],
@@ -211,9 +235,10 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
             if ( is_wp_error( $resp ) ) {
                 $msg = $resp->get_error_message();
                 $this->log( " WP_Error: $msg — caching failure for 6 hours" );
-                $ttl = apply_filters( 'uupd_fetch_remote_error_ttl', 6 * HOUR_IN_SECONDS, $slug );
+                $ttl = self::apply_filters_per_slug( 'uupd_fetch_remote_error_ttl', 6 * HOUR_IN_SECONDS, $slug );
                 set_transient( $failure_cache_key, time(), $ttl );
                 do_action( 'uupd_metadata_fetch_failed', [ 'slug' => $c['slug'], 'server' => $c['server'], 'message' => $msg ] );
+                do_action( "uupd_metadata_fetch_failed/{$c['slug']}", [ 'slug' => $c['slug'], 'server' => $c['server'], 'message' => $msg ] );
                 return;
             }
 
@@ -224,28 +249,44 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
 
             if ( 200 !== (int) $code ) {
                 $this->log( "Unexpected HTTP {$code} — update fetch will pause until next cycle" );
-                $ttl = apply_filters( 'uupd_fetch_remote_error_ttl', 6 * HOUR_IN_SECONDS, $slug );
+                $ttl = self::apply_filters_per_slug( 'uupd_fetch_remote_error_ttl', 6 * HOUR_IN_SECONDS, $slug );
                 set_transient( $failure_cache_key, time(), $ttl );
                 do_action( 'uupd_metadata_fetch_failed', [ 'slug' => $c['slug'], 'server' => $c['server'], 'code' => $code ] );
+                do_action( "uupd_metadata_fetch_failed/{$c['slug']}", [ 'slug' => $c['slug'], 'server' => $c['server'], 'code' => $code ] );
                 return;
             }
 
             $meta = json_decode( $body );
             if ( ! $meta ) {
                 $this->log( ' JSON decode failed — caching error state' );
-                $ttl = apply_filters( 'uupd_fetch_remote_error_ttl', 6 * HOUR_IN_SECONDS, $slug );
+                $ttl = self::apply_filters_per_slug( 'uupd_fetch_remote_error_ttl', 6 * HOUR_IN_SECONDS, $slug );
                 set_transient( $failure_cache_key, time(), $ttl );
                 do_action( 'uupd_metadata_fetch_failed', [ 'slug' => $c['slug'], 'server' => $c['server'], 'code' => 200, 'message' => 'Invalid JSON' ] );
+                do_action( "uupd_metadata_fetch_failed/{$c['slug']}", [ 'slug' => $c['slug'], 'server' => $c['server'], 'code' => 200, 'message' => 'Invalid JSON' ] );
                 return;
             }
 
             // Allow developers to manipulate raw metadata before use
-            $meta = apply_filters( 'uupd/metadata_result', $meta, $slug, $c );
+            $meta = self::apply_filters_per_slug( 'uupd/metadata_result', $meta, $slug );
 
-            set_transient( 'upd_' . $c['slug'], $meta, 6 * HOUR_IN_SECONDS );
+
+            set_transient( 'upd_' . $c['slug'], $meta, self::apply_filters_per_slug( 'uupd_success_cache_ttl', 6 * HOUR_IN_SECONDS, $c['slug'] ) );
             delete_transient( $failure_cache_key );
             $this->log( " Cached metadata '{$c['slug']}' → v" . ( $meta->version ?? 'unknown' ) );
         }
+
+
+        private function normalize_version( $v ) {
+            // Treat 'alpha', 'beta', 'rc' as 'alpha.0', etc.
+            return preg_replace_callback(
+                '/^(\d+\.\d+\.\d+)-(alpha|beta|rc|dev|preview)$/i',
+                function( $m ) {
+                    return "{$m[1]}-{$m[2]}.0";
+                },
+                $v
+            );
+        }
+
 
 
         /** Handle plugin update injection. */
@@ -280,7 +321,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
 
                     if ( false === $release ) {
                         $api_url = str_replace( 'github.com', 'api.github.com/repos', $repo_url ) . '/releases/latest';
-                        $token   = apply_filters( 'uupd/github_token_override', $c['github_token'] ?? '', $slug );
+                        $token = self::apply_filters_per_slug( 'uupd/github_token_override', $c['github_token'] ?? '', $slug );
 
                         $headers = [ 'Accept' => 'application/vnd.github.v3+json' ];
                         if ( $token ) {
@@ -292,14 +333,15 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
 
                         if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
                             $release = json_decode( wp_remote_retrieve_body( $response ) );
-                            $ttl = apply_filters( 'uupd_fetch_remote_error_ttl', 6 * hoUR_IN_SECONDS, $slug );
-                            set_transient( $error_key, time(), $ttl );
+                            $ttl = self::apply_filters_per_slug( 'uupd_success_cache_ttl', 6 * HOUR_IN_SECONDS, $slug );
+                            set_transient( $cache_key, $release, $ttl );
 
                         } else {
                             $msg = is_wp_error( $response ) ? $response->get_error_message() : 'Invalid HTTP response';
                             $this->log( "✗ GitHub API failed — $msg — caching error state" );
                             set_transient( $error_key, time(), 6 * HOUR_IN_SECONDS );
                             do_action( 'uupd_metadata_fetch_failed', [ 'slug' => $slug, 'server' => $repo_url, 'message' => $msg ] );
+                            do_action( "uupd_metadata_fetch_failed/{$c['slug']}", [ 'slug' => $slug, 'server' => $repo_url, 'message' => $msg ] );
                             return $trans;
                         }
                     }
@@ -328,7 +370,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
                         ];
                     }
 
-                    set_transient( $cache_id, $meta, apply_filters( 'uupd_success_cache_ttl', 6 * HOUR_IN_SECONDS, $slug ) );
+                    $ttl = self::apply_filters_per_slug( 'uupd_fetch_remote_error_ttl', 6 * HOUR_IN_SECONDS, $slug );
                     delete_transient( $error_key );
 
                 } else {
@@ -342,28 +384,42 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
             $allow_prerelease   = $this->config['allow_prerelease'] ?? false;
 
             // If prerelease is not allowed and the version is a prerelease, skip
-            if (
-                ! $meta
-                || ( ! $allow_prerelease && preg_match( '/\d+\.\d+\.\d+-(alpha|beta|rc)[\.\d\-]*/i', $remote_version ) )
-                || version_compare( $current, $remote_version, '>=' )
-            ) {
-                $this->log( "Plugin '{$slug}' is up to date (v$current)" );
-                $trans->no_update[ $file ] = (object) [
-                    'id'           => $file,
-                    'slug'         => $slug,
-                    'plugin'       => $file,
-                    'new_version'  => $current,
-                    'url'          => $meta->homepage ?? '',
-                    'package'      => '',
-                    'icons'        => (array) ( $meta->icons ?? [] ),
-                    'banners'      => (array) ( $meta->banners ?? [] ),
-                    'tested'       => $meta->tested ?? '',
-                    'requires'     => $meta->requires ?? $meta->min_wp_version ?? '',
-                    'requires_php' => $meta->requires_php ?? '',
-                    'compatibility'=> new \stdClass(),
-                ];
-                return $trans;
-            }
+            $current_normalized = $this->normalize_version( $current );
+            $remote_normalized  = $this->normalize_version( $remote_version );
+            $this->log( "Comparing normalized versions: installed={$current_normalized}, remote={$remote_normalized}" );
+
+
+            if ( ! $meta ) {
+                            $this->log("No metadata found, skipping update logic.");
+                            return $trans;
+                        }
+
+                        // Extra logging for clarity
+                        $this->log( "Original versions: installed={$current}, remote={$remote_version}" );
+                        $this->log( "Normalized versions: installed={$current_normalized}, remote={$remote_normalized}" );
+
+                        if (
+                            ( ! $allow_prerelease && preg_match( '/\d+\.\d+\.\d+-(alpha|beta|rc|dev|preview)[\.\d\-]*/i', $remote_version ) )
+                            || version_compare( $current_normalized, $remote_normalized, '>=' )
+                        ) {
+                            $this->log( "Plugin '{$slug}' is up to date (v{$current})" );
+                            $trans->no_update[ $file ] = (object) [
+                                'id'           => $file,
+                                'slug'         => $slug,
+                                'plugin'       => $file,
+                                'new_version'  => $current,
+                                'url'          => $meta->homepage ?? '',
+                                'package'      => '',
+                                'icons'        => (array) ( $meta->icons ?? [] ),
+                                'banners'      => (array) ( $meta->banners ?? [] ),
+                                'tested'       => $meta->tested ?? '',
+                                'requires'     => $meta->requires ?? $meta->min_wp_version ?? '',
+                                'requires_php' => $meta->requires_php ?? '',
+                                'compatibility'=> new \stdClass(),
+                            ];
+                            return $trans;
+                        }
+
 
             //  Inject update data
             $this->log( "Injecting plugin update '{$slug}' → v{$meta->version}" );
@@ -397,6 +453,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
         $slug     = $c['real_slug'] ?? $c['slug'];        // WP expects real theme folder slug
         $cache_id = 'upd_' . $c['slug'];                  // Transient key for metadata
         $error_key = $cache_id . '_error';                // Transient key for error flag
+        $this->log( "Theme-update hook for '{$c['slug']}'" );
         $current  = $trans->checked[ $slug ] ?? wp_get_theme( $slug )->get( 'Version' );
 
         $meta = get_transient( $cache_id );
@@ -428,13 +485,14 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
 
                     if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
                         $release = json_decode( wp_remote_retrieve_body( $response ) );
-                        $ttl = apply_filters( 'uupd_fetch_remote_error_ttl', 6 * hoUR_IN_SECONDS, $slug );
-                        set_transient( $error_key, time(), $ttl );
+                        $ttl = self::apply_filters_per_slug( 'uupd_success_cache_ttl', 6 * HOUR_IN_SECONDS, $slug );
+                        set_transient( $cache_key, $release, $ttl );
 
                     } else {
                         $this->log( 'GitHub API fetch failed — caching error state' );
                         set_transient( $error_key, time(), 6 * HOUR_IN_SECONDS );
                         do_action( 'uupd_metadata_fetch_failed', [ 'slug' => $c['slug'], 'server' => $repo_url, 'message' => 'GitHub fetch failed' ] );
+                        do_action( "uupd_metadata_fetch_failed/{$c['slug']}", [ 'slug' => $c['slug'], 'server' => $repo_url, 'message' => 'GitHub fetch failed' ] );
                         return $trans;
                     }
                 }
@@ -455,7 +513,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
                     ];
                 }
 
-                set_transient( $cache_id, $meta, apply_filters( 'uupd_success_cache_ttl', 6 * HOUR_IN_SECONDS, $slug ) );
+                $ttl = self::apply_filters_per_slug( 'uupd_fetch_remote_error_ttl', 6 * HOUR_IN_SECONDS, $slug );
                 delete_transient( $error_key );
 
             } else {
@@ -477,12 +535,22 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
         $remote_version     = $meta->version ?? '0.0.0';
         $allow_prerelease   = $this->config['allow_prerelease'] ?? false;
 
-        // If prerelease is not allowed and the version is a prerelease, skip
+        if ( ! $meta ) {
+            $this->log("No metadata found, skipping update logic.");
+            return $trans;
+        }
+
+        $current_normalized = $this->normalize_version( $current );
+        $remote_normalized  = $this->normalize_version( $remote_version );
+
+        $this->log( "Original versions: installed={$current}, remote={$remote_version}" );
+        $this->log( "Normalized versions: installed={$current_normalized}, remote={$remote_normalized}" );
+
         if (
-            ! $meta
-            || ( ! $allow_prerelease && preg_match( '/\d+\.\d+\.\d+-(alpha|beta|rc)[\.\d\-]*/i', $remote_version ) )
-            || version_compare( $current, $remote_version, '>=' )
+            ( ! $allow_prerelease && preg_match( '/\d+\.\d+\.\d+-(alpha|beta|rc|dev|preview)[\.\d\-]*/i', $remote_version ) )
+            || version_compare( $current_normalized, $remote_normalized, '>=' )
         ) {
+
             $this->log( " Theme '{$c['slug']}' is up to date (v$current)" );
             $trans->no_update[ $slug ] = (object) array_merge( $base_info, [
                 'new_version' => $current,
@@ -674,6 +742,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
                 $redirect = wp_get_referer() ?: admin_url( 'themes.php' );
             }
 
+            $redirect = self::apply_filters_per_slug( 'uupd/manual_check_redirect', $redirect, $slug );
             wp_safe_redirect( $redirect );
             exit;
         } );

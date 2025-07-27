@@ -158,3 +158,67 @@ Enable UUPD logging:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ php
 add_filter( 'updater_enable_debug', fn( $e ) => true );
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ 
+
+ 
+
+ 
+
+🔧 Scoped Filters Overview
+-------------------------
+
+To allow fine-grained control per plugin or theme, UUPD supports **scoped
+filters** in the format:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+uupd/{filter_name}/{slug}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+These scoped filters take precedence over their global equivalents if defined.
+
+ 
+
+### 🔧 `uupd/server_url/{slug}`
+
+**Purpose:** Override the update server URL for a specific plugin or theme slug.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ php
+add_filter( 'uupd/server_url/example-plugin', function( $url, $slug ) {
+    return 'https://mydomain.com/example-updates/';
+}, 10, 2 );
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+>   ✅ This will override only for `example-plugin`.
+
+ 
+
+### 🔧 `uupd/allow_prerelease/{slug}`
+
+**Purpose:** Allow pre-release updates for a specific plugin/theme.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ php
+add_filter( 'uupd/allow_prerelease/example-plugin', function( $allow, $slug ) {
+    return get_option( 'example_plugin_allow_prerelease' ) === 'yes';
+}, 10, 2 );
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ 
+
+### 🔧 `uupd/metadata_result/{slug}`
+
+**Purpose:** Modify the JSON metadata result for a given plugin or theme slug.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ php
+add_filter( 'uupd/metadata_result/example-plugin', function( $meta ) {
+    $meta->tested = '6.9.0';
+    return $meta;
+});
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ 
+
+### ✅ Precedence
+
+Scoped filters (`uupd/server_url/{slug}`) are checked **first**. If no match is
+found, global filters (`uupd/server_url`) apply.
