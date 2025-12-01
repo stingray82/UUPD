@@ -18,6 +18,7 @@ add_action( 'plugins_loaded', function() {
         'key'             => 'YourSecretKeyHere',              // Optional secret for private servers
         'textdomain'      => 'example-plugin',                 // Optional, defaults to slug
         'allow_prerelease'=> false,                            // Optional: allow beta/rc versions (default: false)
+        'cache_prefix' 	  => 'upd_',                        // optional, default 'upd_'
     ]);
 }, 1);
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

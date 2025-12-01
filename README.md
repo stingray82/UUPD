@@ -74,6 +74,7 @@ add_action( 'plugins_loaded', function() {
         'key'             => 'YourSecretKeyHere',              // Optional secret for private servers
         'textdomain'      => 'example-plugin',                 // Optional, defaults to slug
         'allow_prerelease'=> false,                            // Optional: allow beta/rc versions (default: false)
+        'cache_prefix'    => 'upd_',                        // optional, default 'upd_'
     ]);
 }, 20); // You may increase this priority to allow filter overrides earlier
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -99,6 +100,7 @@ add_action( 'after_setup_theme', function() {
         'key'             => 'YourSecretKeyHere',             // Optional secret key for private update servers
         'textdomain'      => 'example-theme',                 // Optional, defaults to slug
         'allow_prerelease'=> false,                           // Optional: enable beta/rc updates (default: false)
+        'cache_prefix'    => 'upd_',                        // optional, default 'upd_'
     ];
 
     add_action( 'admin_init', function() use ( $updater_config ) {

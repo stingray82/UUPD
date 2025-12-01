@@ -12,6 +12,7 @@ You can programmatically build your updater config to support staging, testing, 
     'server'           => 'https://example.com/updates/',
     'allow_prerelease' => get_option( 'my_plugin_allow_prerelease', false ),
     'github_token'     => get_option( 'my_plugin_github_token' ),
+    'cache_prefix'     => 'upd_',
 ]);
 ```
 

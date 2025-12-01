@@ -17,6 +17,7 @@ add_action( 'after_setup_theme', function() {
         'key'             => 'YourSecretKeyHere',             // Optional secret key for private update servers
         'textdomain'      => 'example-theme',                 // Optional, defaults to slug
         'allow_prerelease'=> false,                           // Optional: enable beta/rc updates (default: false)
+        'cache_prefix'    => 'upd_',                        // optional, default 'upd_'
     ];
 
     add_action( 'admin_init', function() use ( $updater_config ) {
