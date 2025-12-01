@@ -48,8 +48,9 @@
  *            'key'           => 'YourSecretKeyHere',             // optional if using GitHub
  *            'server'        => 'https://github.com/user/repo',  // GitHub or private server
  *            'github_token'  => 'ghp_YourTokenHere',             // optional
- *            // 'textdomain' => 'my-plugin-textdomain',         // optional, defaults to 'slug'
- *            // 'allow_prerelease'=> false, // Optional — default is false. Set to true to allow beta/RC updates.
+ *            // 'textdomain'    => 'my-plugin-textdomain',       // optional, defaults to 'slug'
+ *            // 'allow_prerelease' => false,                     // Optional — default is false. Set to true to allow beta/RC updates.
+ *            // 'cache_prefix' => 'upd_',                        // optional, default 'upd_'
  *        ];
  *
  *        \UUPD\V1\UUPD_Updater_V1::register( $updater_config );
@@ -69,12 +70,13 @@
  *        $updater_config = [
  *            'slug'         => 'my-theme-folder',                // must match theme folder
  *            'name'         => 'My Theme Name',
- *            'version'      => '1.0.0',                           // match style.css Version
+ *            'version'      => '1.0.0',                          // match style.css Version
  *            'key'          => 'YourSecretKeyHere',              // optional if using GitHub
  *            'server'       => 'https://github.com/user/repo',   // GitHub or private
  *            'github_token' => 'ghp_YourTokenHere',              // optional
- *            // 'textdomain' => 'my-theme-textdomain',
- *            // 'allow_prerelease'=> false, // <--- NEW: optional, defaults to false
+ *            // 'textdomain'    => 'my-theme-textdomain',
+ *            // 'allow_prerelease' => false,                     // <--- NEW: optional, defaults to false
+ *            // 'cache_prefix'    => 'upd_',                     // optional, default 'upd_'
  *        ];
  *
  *        add_action( 'admin_init', function() use ( $updater_config ) {
@@ -84,7 +86,7 @@
  *
  * ╰─────────────────────────────────────────────────────────────────────────────╯
  *
- *  * ╭────────────────────────────── Cache Duration Filters ───────────────────────────────╮
+ * ╭────────────────────────────── Cache Duration Filters ───────────────────────────────╮
  *
  * ➤ Customize how long update data is cached (success or failure) per slug or globally:
  *
@@ -101,28 +103,23 @@
  *       return 15 * MINUTE_IN_SECONDS; // Retry failed fetches after 15 minutes
  *   }, 10, 2 );
  *
- * ➤ These filters help balance performance and responsiveness for different update sources.
+ * ╰──────────────────────────────────────────────────────────────────────────────────────╯
  *
- * ╰──────────────────────────────────────────────────────────────────────────────────────╯ 
- * 
- * 
- * 
  * 🔧 Optional Debugging:
  *     Add this anywhere in your code:
  *         add_filter( 'updater_enable_debug', fn( $e ) => true );
  *
  *     Also enable in wp-config.php:
  *         define( 'WP_DEBUG', true );
- *         define( 'WP_DEBUG_LOG', true ); * 
- * 
+ *         define( 'WP_DEBUG_LOG', true );
+ *
  * What This Does:
  *  - Detects updates from GitHub or private JSON endpoints
  *  - Auto-selects GitHub logic if `server` contains "github.com"
- *  - Caches metadata in `upd_{slug}` for 6 hours
+ *  - Caches metadata in `{cache_prefix}{slug}` (default `upd_{slug}`) for 6 hours
  *  - Injects WordPress update data via native transients
  *  - Adds “View details” + “Check for updates” under plugin/theme row
  *  - Works seamlessly with `wp_update_plugins()` or `wp_update_themes()`
- *
  *
  * Scoped Filters:
  *   All filters like `uupd/server_url`, `uupd/remote_url`, etc., also support per-slug filters.
@@ -130,9 +127,6 @@
  *      add_filter( 'uupd/server_url/my-plugin-slug', function( $url ) {
  *          return 'https://mydomain.com/my-endpoint';
  *      });
- *
- *
- *
  */
 
 namespace UUPD\V1;
@@ -141,53 +135,55 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
 
     class UUPD_Updater_V1 {
 
-        const VERSION = '1.3.1'; // Change as needed
-
-
-        private static function apply_filters_per_slug( $filter_base, $default, $slug ) {
-            $slug = sanitize_key( $slug );
-            $scoped = apply_filters( "{$filter_base}/{$slug}", $default, $slug );
-            return apply_filters( $filter_base, $scoped, $slug );
-        }
-
+        const VERSION = '1.3.2'; // Change as needed
 
         /** @var array Configuration settings */
         private $config;
+
+        private static function apply_filters_per_slug( $filter_base, $default, $slug ) {
+            $slug   = sanitize_key( $slug );
+            $scoped = apply_filters( "{$filter_base}/{$slug}", $default, $slug );
+            return apply_filters( $filter_base, $scoped, $slug );
+        }
 
         /**
          * Constructor.
          *
          * @param array $config {
-         *   @type string 'slug'        Plugin or theme slug.
-         *   @type string 'name'        Human-readable name.
-         *   @type string 'version'     Current version.
-         *   @type string 'key'         Your secret key.
-         *   @type string 'server'      Base URL of your updater endpoint.
-         *   @type string 'plugin_file' (optional) plugin_basename(__FILE__) for plugins.
-         *   @type bool 'allow_prerelease' (optional) Whether to allow updates to prerelease versions (e.g. -beta, -rc).
-         * 
+         *   @type string 'slug'           Plugin or theme slug.
+         *   @type string 'name'           Human-readable name.
+         *   @type string 'version'        Current version.
+         *   @type string 'key'            Your secret key.
+         *   @type string 'server'         Base URL of your updater endpoint.
+         *   @type string 'plugin_file'    (optional) plugin_basename(__FILE__) for plugins.
+         *   @type bool   'allow_prerelease' (optional) Whether to allow updates to prerelease versions.
+         *   @type string 'cache_prefix'   (optional) Transient prefix, default 'upd_'.
          * }
          */
         public function __construct( array $config ) {
-             // Allow plugins to override full config dynamically
+            // Allow plugins to override full config dynamically.
             $config = self::apply_filters_per_slug( 'uupd/filter_config', $config, $config['slug'] ?? '' );
 
-            // Allow override of prerelease flag (per-slug logic)
+            // Allow override of prerelease flag (per-slug logic).
             $config['allow_prerelease'] = self::apply_filters_per_slug(
                 'uupd/allow_prerelease',
                 $config['allow_prerelease'] ?? false,
                 $config['slug'] ?? ''
             );
 
-
-            // Allow overriding the server URL
+            // Allow overriding the server URL.
             $config['server'] = self::apply_filters_per_slug(
                 'uupd/server_url',
                 $config['server'] ?? '',
                 $config['slug'] ?? ''
             );
 
-
+            // NEW: Allow overriding cache prefix, default 'upd_'.
+            $config['cache_prefix'] = self::apply_filters_per_slug(
+                'uupd/cache_prefix',
+                $config['cache_prefix'] ?? 'upd_',
+                $config['slug'] ?? ''
+            );
 
             $this->config = $config;
             $this->log( "✓ Using UUPD_Updater_V1 version " . self::VERSION );
@@ -198,12 +194,12 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
         private function register_hooks() {
             if ( ! empty( $this->config['plugin_file'] ) ) {
                 add_filter( 'pre_set_site_transient_update_plugins', [ $this, 'plugin_update' ] );
-                add_filter( 'site_transient_update_plugins',     [ $this, 'plugin_update' ] ); // WP 6.8
-                add_filter( 'plugins_api',                       [ $this, 'plugin_info' ], 10, 3 );
+                add_filter( 'site_transient_update_plugins',         [ $this, 'plugin_update' ] ); // WP 6.8
+                add_filter( 'plugins_api',                           [ $this, 'plugin_info' ], 10, 3 );
             } else {
                 add_filter( 'pre_set_site_transient_update_themes', [ $this, 'theme_update' ] );
-                add_filter( 'site_transient_update_themes',          [ $this, 'theme_update' ] ); // WP 6.8
-                add_filter( 'themes_api',                            [ $this, 'theme_info' ], 10, 3 );
+                add_filter( 'site_transient_update_themes',         [ $this, 'theme_update' ] ); // WP 6.8
+                add_filter( 'themes_api',                           [ $this, 'theme_info' ], 10, 3 );
             }
         }
 
@@ -211,29 +207,29 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
         private function fetch_remote() {
             $c          = $this->config;
             $slug_plain = $c['slug'] ?? '';
+            $prefix     = $c['cache_prefix'] ?? 'upd_';
 
             if ( empty( $c['server'] ) ) {
                 $this->log( 'No server URL configured — skipping fetch and caching an error state.' );
                 $ttl = self::apply_filters_per_slug( 'uupd_fetch_remote_error_ttl', 6 * HOUR_IN_SECONDS, $slug_plain );
-                set_transient( 'upd_' . $slug_plain . '_error', time(), $ttl );
+                set_transient( $prefix . $slug_plain . '_error', time(), $ttl );
                 do_action( 'uupd_metadata_fetch_failed', [ 'slug' => $slug_plain, 'server' => '', 'message' => 'No server configured' ] );
                 do_action( "uupd_metadata_fetch_failed/{$slug_plain}", [ 'slug' => $slug_plain, 'server' => '', 'message' => 'No server configured' ] );
                 return;
             }
-            $slug_qs    = rawurlencode( $slug_plain ); // only for the URL query
-            $key_qs     = rawurlencode( isset( $c['key'] ) ? $c['key'] : '' );
-            $host_qs    = rawurlencode( wp_parse_url( untrailingslashit( home_url() ), PHP_URL_HOST ) );
 
-            $separator  = strpos( $c['server'], '?' ) === false ? '?' : '&';
-            $url = ( self::ends_with( $c['server'], '.json' ) ? $c['server'] : untrailingslashit( $c['server'] ) )
-                 . $separator . "action=get_metadata&slug={$slug_qs}&key={$key_qs}&domain={$host_qs}";
+            $slug_qs = rawurlencode( $slug_plain ); // only for the URL query
+            $key_qs  = rawurlencode( isset( $c['key'] ) ? $c['key'] : '' );
+            $host_qs = rawurlencode( wp_parse_url( untrailingslashit( home_url() ), PHP_URL_HOST ) );
 
+            $separator = strpos( $c['server'], '?' ) === false ? '?' : '&';
+            $url       = ( self::ends_with( $c['server'], '.json' ) ? $c['server'] : untrailingslashit( $c['server'] ) )
+                       . $separator . "action=get_metadata&slug={$slug_qs}&key={$key_qs}&domain={$host_qs}";
 
-
-            // Allow full override of constructed URL
+            // Allow full override of constructed URL.
             $url = self::apply_filters_per_slug( 'uupd/remote_url', $url, $slug_plain );
 
-            $failure_cache_key = 'upd_' . $slug_plain . '_error';
+            $failure_cache_key = $prefix . $slug_plain . '_error';
 
             $this->log( " Fetching metadata: {$url}" );
             do_action( 'uupd/before_fetch_remote', $slug_plain, $c );
@@ -278,64 +274,59 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
                 return;
             }
 
-            // Allow developers to manipulate raw metadata before use
+            // Allow developers to manipulate raw metadata before use.
             $meta = self::apply_filters_per_slug( 'uupd/metadata_result', $meta, $slug_plain );
 
-            set_transient( 'upd_' . $slug_plain, $meta, self::apply_filters_per_slug( 'uupd_success_cache_ttl', 6 * HOUR_IN_SECONDS, $slug_plain ) );
+            $ttl = self::apply_filters_per_slug( 'uupd_success_cache_ttl', 6 * HOUR_IN_SECONDS, $slug_plain );
+            set_transient( $prefix . $slug_plain, $meta, $ttl );
             delete_transient( $failure_cache_key );
             $this->log( " Cached metadata '{$slug_plain}' → v" . ( $meta->version ?? 'unknown' ) );
         }
 
-
-
         private function normalize_version( $v ) {
-            $v = trim((string) $v);
+            $v = trim( (string) $v );
 
             // Strip build metadata (SemVer: everything after '+')
-            $v = preg_replace('/\+.*$/', '', $v);
+            $v = preg_replace( '/\+.*$/', '', $v );
 
             // Drop a leading 'v' (e.g. v1.3.0)
-            $v = ltrim($v, "vV");
+            $v = ltrim( $v, "vV" );
 
             // Normalize separators
-            $v = str_replace('_', '-', $v);
+            $v = str_replace( '_', '-', $v );
 
             // Ensure we have three numeric components (x.y.z)
-            if (preg_match('/^\d+\.\d+$/', $v)) {
+            if ( preg_match( '/^\d+\.\d+$/', $v ) ) {
                 $v .= '.0';
-            } elseif (preg_match('/^\d+$/', $v)) {
+            } elseif ( preg_match( '/^\d+$/', $v ) ) {
                 $v .= '.0.0';
             }
 
             // Insert a hyphen before pre-release if someone wrote 1.3.0alpha2 / 1.3.0rc
-            // Also capture shorthands and synonyms: a,b,pre,preview
+             // Also capture shorthands and synonyms: a,b,pre,preview
             // Capture optional numeric like alpha2 / alpha-2 / alpha.2
-            if (preg_match('/^(\d+\.\d+\.\d+)[\.\-]?((?:alpha|a|beta|b|rc|dev|pre|preview))(?:(?:[\.\-]?)(\d+))?$/i', $v, $m)) {
+            if ( preg_match( '/^(\d+\.\d+\.\d+)[\.\-]?((?:alpha|a|beta|b|rc|dev|pre|preview))(?:(?:[\.\-]?)(\d+))?$/i', $v, $m ) ) {
                 $core = $m[1];
-                $tag  = strtolower($m[2]);
-                $num  = isset($m[3]) && $m[3] !== '' ? $m[3] : '0';
+                $tag  = strtolower( $m[2] );
+                $num  = isset( $m[3] ) && $m[3] !== '' ? $m[3] : '0';
 
-                // Map shorthands & synonyms to PHP-recognized tokens
-                switch ($tag) {
+                switch ( $tag ) {
                     case 'a':       $tag = 'alpha'; break;
                     case 'b':       $tag = 'beta';  break;
-                    case 'pre':     // treat "pre/preview" as earlier than RC, closer to beta
+                    case 'pre': // treat "pre/preview" as earlier than RC, closer to beta
                     case 'preview': $tag = 'beta';  break;
                     case 'rc':      $tag = 'rc';    break; // PHP is case-insensitive
                     case 'dev':     $tag = 'dev';   break;
-                    // alpha/beta already work correctly
                 }
 
                 $v = "{$core}-{$tag}.{$num}";
             }
 
             // If someone wrote "1.3.0-alpha" (no number), pad with .0
-            $v = preg_replace('/^(\d+\.\d+\.\d+)-(alpha|beta|rc|dev)(?=$)/i', '$1-$2.0', $v);
+            $v = preg_replace( '/^(\d+\.\d+\.\d+)-(alpha|beta|rc|dev)(?=$)/i', '$1-$2.0', $v );
 
             return $v;
         }
-
-
 
         /** Handle plugin update injection. */
         public function plugin_update( $trans ) {
@@ -343,10 +334,11 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
                 return $trans;
             }
 
-            $c         = $this->config;
-            $file      = $c['plugin_file'];
-            $slug      = $c['slug'];
-            $cache_id  = 'upd_' . $slug;
+            $c        = $this->config;
+            $file     = $c['plugin_file'];
+            $slug     = $c['slug'];
+            $prefix   = $c['cache_prefix'] ?? 'upd_';
+            $cache_id = $prefix . $slug;
             $error_key = $cache_id . '_error';
 
             $this->log( "Plugin-update hook for '{$slug}'" );
@@ -381,7 +373,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
 
                         if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
                             $release = json_decode( wp_remote_retrieve_body( $response ) );
-                            $ttl = self::apply_filters_per_slug( 'uupd_success_cache_ttl', 6 * HOUR_IN_SECONDS, $slug );
+                            $ttl     = self::apply_filters_per_slug( 'uupd_success_cache_ttl', 6 * HOUR_IN_SECONDS, $slug );
                             set_transient( $cache_key, $release, $ttl );
                         } else {
                             $msg = is_wp_error( $response ) ? $response->get_error_message() : 'Invalid HTTP response';
@@ -426,8 +418,6 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
                     // Success: clear the error flag for this slug (if any)
                     delete_transient( $error_key );
 
-
-                    
                 } else {
                     $this->fetch_remote(); // Handles error logging + failure cache internally
                     $meta = get_transient( $cache_id );
@@ -436,27 +426,26 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
 
             // If still no metadata, bail
             if ( ! $meta ) {
-                $this->log("No metadata found, skipping update logic.");
+                $this->log( "No metadata found, skipping update logic." );
                 return $trans;
             }
 
             // Compare versions
-            $remote_version     = $meta->version ?? '0.0.0';
-            $allow_prerelease   = $this->config['allow_prerelease'] ?? false;
+            $remote_version   = $meta->version ?? '0.0.0';
+            $allow_prerelease = $this->config['allow_prerelease'] ?? false;
 
             $current_normalized = $this->normalize_version( $current );
             $remote_normalized  = $this->normalize_version( $remote_version );
 
-            $this->log("Original versions: installed={$current}, remote={$remote_version}");
-            $this->log("Normalized versions: installed={$current_normalized}, remote={$remote_normalized}");
-            $this->log("Comparing (normalized): installed={$current_normalized} vs remote={$remote_normalized}");
+            $this->log( "Original versions: installed={$current}, remote={$remote_version}" );
+            $this->log( "Normalized versions: installed={$current_normalized}, remote={$remote_normalized}" );
+            $this->log( "Comparing (normalized): installed={$current_normalized} vs remote={$remote_normalized}" );
 
             if (
-                ( ! $allow_prerelease && preg_match('/^\d+\.\d+\.\d+-(alpha|beta|rc|dev|preview)(?:[.\-]\d+)?$/i', $remote_normalized) )
-                ||
-                version_compare( $current_normalized, $remote_normalized, '>=' )
+                ( ! $allow_prerelease && preg_match( '/^\d+\.\d+\.\d+-(alpha|beta|rc|dev|preview)(?:[.\-]\d+)?$/i', $remote_normalized ) )
+                || version_compare( $current_normalized, $remote_normalized, '>=' )
             ) {
-                $this->log("Plugin '{$slug}' is up to date (v{$current})");
+                $this->log( "Plugin '{$slug}' is up to date (v{$current})" );
                 $trans->no_update[ $file ] = (object) [
                     'id'           => $file,
                     'slug'         => $slug,
@@ -497,161 +486,157 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
             return $trans;
         }
 
+        /** Handle theme update injection. */
+        public function theme_update( $trans ) {
+            if ( ! is_object( $trans ) || ! isset( $trans->checked ) || ! is_array( $trans->checked ) ) {
+                return $trans;
+            }
 
-    public function theme_update( $trans ) {
-        if ( ! is_object( $trans ) || ! isset( $trans->checked ) || ! is_array( $trans->checked ) ) {
-            return $trans;
-        }
+            $c         = $this->config;
+            $slug      = $c['real_slug'] ?? $c['slug'];      // WP expects real theme folder slug
+            $prefix    = $c['cache_prefix'] ?? 'upd_';
+            $cache_id  = $prefix . $c['slug'];               // Transient key for metadata
+            $error_key = $cache_id . '_error';               // Transient key for error flag
 
-        $c         = $this->config;
-        $slug      = $c['real_slug'] ?? $c['slug'];      // WP expects real theme folder slug
-        $cache_id  = 'upd_' . $c['slug'];               // Transient key for metadata
-        $error_key = $cache_id . '_error';              // Transient key for error flag
+            $this->log( "Theme-update hook for '{$c['slug']}'" );
 
-        $this->log( "Theme-update hook for '{$c['slug']}'" );
+            $current = $trans->checked[ $slug ] ?? wp_get_theme( $slug )->get( 'Version' );
+            $meta    = get_transient( $cache_id );
 
-        $current = $trans->checked[ $slug ] ?? wp_get_theme( $slug )->get( 'Version' );
-        $meta    = get_transient( $cache_id );
+            // Skip if last fetch failed
+            if ( false === $meta && get_transient( $error_key ) ) {
+                $this->log( "Skipping theme update check for '{$c['slug']}' — previous error cached" );
+                return $trans;
+            }
 
-        // Skip if last fetch failed
-        if ( false === $meta && get_transient( $error_key ) ) {
-            $this->log( "Skipping theme update check for '{$c['slug']}' — previous error cached" );
-            return $trans;
-        }
+            // If metadata is missing, try to fetch it (GitHub or private server)
+            if ( false === $meta ) {
+                if ( isset( $c['server'] ) && strpos( $c['server'], 'github.com' ) !== false ) {
+                    $repo_url  = rtrim( $c['server'], '/' );
+                    $cache_key = 'uupd_github_release_' . md5( $repo_url );
+                    $release   = get_transient( $cache_key );
 
-        // If metadata is missing, try to fetch it (GitHub or private server)
-        if ( false === $meta ) {
-            if ( isset( $c['server'] ) && strpos( $c['server'], 'github.com' ) !== false ) {
-                $repo_url  = rtrim( $c['server'], '/' );
-                $cache_key = 'uupd_github_release_' . md5( $repo_url );
-                $release   = get_transient( $cache_key );
+                    if ( false === $release ) {
+                        $api_url = str_replace( 'github.com', 'api.github.com/repos', $repo_url ) . '/releases/latest';
+                        $token   = self::apply_filters_per_slug( 'uupd/github_token_override', $c['github_token'] ?? '', $slug );
 
-                if ( false === $release ) {
-                    $api_url = str_replace( 'github.com', 'api.github.com/repos', $repo_url ) . '/releases/latest';
-                    $token = self::apply_filters_per_slug( 'uupd/github_token_override', $c['github_token'] ?? '', $slug );
+                        $headers = [ 'Accept' => 'application/vnd.github.v3+json' ];
+                        if ( $token ) {
+                            $headers['Authorization'] = 'token ' . $token;
+                        }
 
-                    $headers = [ 'Accept' => 'application/vnd.github.v3+json' ];
-                    if ( $token ) {
-                        $headers['Authorization'] = 'token ' . $token;
-                    }
+                        $this->log( " GitHub fetch: $api_url" );
+                        $response = wp_remote_get( $api_url, [ 'headers' => $headers ] );
 
-                    $this->log( " GitHub fetch: $api_url" );
-                    $response = wp_remote_get( $api_url, [ 'headers' => $headers ] );
-
-                    if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
-                        $release = json_decode( wp_remote_retrieve_body( $response ) );
-                        $ttl = self::apply_filters_per_slug( 'uupd_success_cache_ttl', 6 * HOUR_IN_SECONDS, $slug );
-                        set_transient( $cache_key, $release, $ttl );
-                    } else {
-                        $this->log( 'GitHub API fetch failed — caching error state' );
-                        set_transient(
-                            $error_key,
-                            time(),
-                            self::apply_filters_per_slug( 'uupd_fetch_remote_error_ttl', 6 * HOUR_IN_SECONDS, $slug )
-                        );
-                        do_action( 'uupd_metadata_fetch_failed', [ 'slug' => $c['slug'], 'server' => $repo_url, 'message' => 'GitHub fetch failed' ] );
-                        do_action( "uupd_metadata_fetch_failed/{$c['slug']}", [ 'slug' => $c['slug'], 'server' => $repo_url, 'message' => 'GitHub fetch failed' ] );
-                        return $trans;
-                    }
-                }
-
-                if ( isset( $release->tag_name ) ) {
-                    $zip_url = $release->zipball_url;
-
-                    // Prefer an uploaded .zip asset if one exists
-                    foreach ( $release->assets ?? [] as $asset ) {
-                        if ( isset( $asset->name, $asset->browser_download_url ) && self::ends_with( $asset->name, '.zip' ) ) {
-                            $zip_url = $asset->browser_download_url;
-                            break;
+                        if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
+                            $release = json_decode( wp_remote_retrieve_body( $response ) );
+                            $ttl     = self::apply_filters_per_slug( 'uupd_success_cache_ttl', 6 * HOUR_IN_SECONDS, $slug );
+                            set_transient( $cache_key, $release, $ttl );
+                        } else {
+                            $this->log( 'GitHub API fetch failed — caching error state' );
+                            set_transient(
+                                $error_key,
+                                time(),
+                                self::apply_filters_per_slug( 'uupd_fetch_remote_error_ttl', 6 * HOUR_IN_SECONDS, $slug )
+                            );
+                            do_action( 'uupd_metadata_fetch_failed', [ 'slug' => $c['slug'], 'server' => $repo_url, 'message' => 'GitHub fetch failed' ] );
+                            do_action( "uupd_metadata_fetch_failed/{$c['slug']}", [ 'slug' => $c['slug'], 'server' => $repo_url, 'message' => 'GitHub fetch failed' ] );
+                            return $trans;
                         }
                     }
 
-                    $meta = (object) [
-                        'version'      => ltrim( $release->tag_name, 'v' ),
-                        'download_url' => $zip_url,
-                        'homepage'     => $release->html_url ?? $repo_url,
-                        'sections'     => [ 'changelog' => $release->body ?? '' ],
-                    ];
+                    if ( isset( $release->tag_name ) ) {
+                        $zip_url = $release->zipball_url;
+
+                        // Prefer an uploaded .zip asset if one exists
+                        foreach ( $release->assets ?? [] as $asset ) {
+                            if ( isset( $asset->name, $asset->browser_download_url ) && self::ends_with( $asset->name, '.zip' ) ) {
+                                $zip_url = $asset->browser_download_url;
+                                break;
+                            }
+                        }
+
+                        $meta = (object) [
+                            'version'      => ltrim( $release->tag_name, 'v' ),
+                            'download_url' => $zip_url,
+                            'homepage'     => $release->html_url ?? $repo_url,
+                            'sections'     => [ 'changelog' => $release->body ?? '' ],
+                        ];
+                    } else {
+                        $meta = (object) [
+                            'version'      => $c['version'],
+                            'download_url' => '',
+                            'homepage'     => $repo_url,
+                            'sections'     => [ 'changelog' => '' ],
+                        ];
+                    }
+
+                    // Success: clear the error flag for this slug (if any)
+                    delete_transient( $error_key );
                 } else {
-                    $meta = (object) [
-                        'version'      => $c['version'],
-                        'download_url' => '',
-                        'homepage'     => $repo_url,
-                        'sections'     => [ 'changelog' => '' ],
-                    ];
+                    $this->fetch_remote(); // will handle error caching internally
+                    $meta = get_transient( $cache_id );
                 }
-
-                // Success: clear the error flag for this slug (if any)
-                delete_transient( $error_key );
-            } else {
-                $this->fetch_remote(); // will handle error caching internally
-                $meta = get_transient( $cache_id );
             }
-        }
 
-        // If still no metadata, bail before touching $meta->...
-        if ( ! $meta ) {
-            $this->log("No metadata found, skipping update logic.");
-            return $trans;
-        }
+            // If still no metadata, bail before touching $meta->...
+            if ( ! $meta ) {
+                $this->log( "No metadata found, skipping update logic." );
+                return $trans;
+            }
 
-        // Build base info used for both "no update" and "update available"
-        $base_info = [
-            'theme'        => $slug,
-            'url'          => $meta->homepage ?? '',
-            'requires'     => $meta->requires ?? $meta->min_wp_version ?? '',
-            'requires_php' => $meta->requires_php ?? '',
-            'screenshot'   => $meta->screenshot ?? '',
-            'tested'       => $meta->tested ?? '', 
-        ];
+            // Build base info used for both "no update" and "update available"
+            $base_info = [
+                'theme'        => $slug,
+                'url'          => $meta->homepage ?? '',
+                'requires'     => $meta->requires ?? $meta->min_wp_version ?? '',
+                'requires_php' => $meta->requires_php ?? '',
+                'screenshot'   => $meta->screenshot ?? '',
+                'tested'       => $meta->tested ?? '',
+            ];
 
+            // Compare versions
+            $remote_version   = $meta->version ?? '0.0.0';
+            $allow_prerelease = $this->config['allow_prerelease'] ?? false;
 
-        // Compare versions
-        $remote_version     = $meta->version ?? '0.0.0';
-        $allow_prerelease   = $this->config['allow_prerelease'] ?? false;
+            $current_normalized = $this->normalize_version( $current );
+            $remote_normalized  = $this->normalize_version( $remote_version );
 
-        $current_normalized = $this->normalize_version( $current );
-        $remote_normalized  = $this->normalize_version( $remote_version );
+            $this->log( "Original versions: installed={$current}, remote={$remote_version}" );
+            $this->log( "Normalized versions: installed={$current_normalized}, remote={$remote_normalized}" );
+            $this->log( "Comparing (normalized): installed={$current_normalized} vs remote={$remote_normalized}" );
 
-        $this->log( "Original versions: installed={$current}, remote={$remote_version}" );
-        $this->log( "Normalized versions: installed={$current_normalized}, remote={$remote_normalized}" );
-        $this->log( "Comparing (normalized): installed={$current_normalized} vs remote={$remote_normalized}" );
+            if (
+                ( ! $allow_prerelease && preg_match( '/^\d+\.\d+\.\d+-(alpha|beta|rc|dev|preview)(?:[.\-]\d+)?$/i', $remote_normalized ) )
+                || version_compare( $current_normalized, $remote_normalized, '>=' )
+            ) {
+                $this->log( " Theme '{$c['slug']}' is up to date (v{$current})" );
+                $trans->no_update[ $slug ] = (object) array_merge( $base_info, [
+                    'new_version' => $current,
+                    'package'     => '',
+                ] );
+                return $trans;
+            }
 
-        if (
-            ( ! $allow_prerelease && preg_match('/^\d+\.\d+\.\d+-(alpha|beta|rc|dev|preview)(?:[.\-]\d+)?$/i', $remote_normalized) )
-            || version_compare( $current_normalized, $remote_normalized, '>=' )
-        ) {
-            $this->log( " Theme '{$c['slug']}' is up to date (v{$current})" );
-            $trans->no_update[ $slug ] = (object) array_merge( $base_info, [
-                'new_version' => $current,
-                'package'     => '',
+            $this->log( " Injecting theme update '{$c['slug']}' → v{$meta->version}" );
+            $trans->response[ $slug ] = array_merge( $base_info, [
+                'new_version' => $meta->version ?? $current,
+                'package'     => $meta->download_url ?? '',
             ] );
+
+            unset( $trans->no_update[ $slug ] );
             return $trans;
         }
 
-        $this->log( " Injecting theme update '{$c['slug']}' → v{$meta->version}" );
-        $trans->response[ $slug ] = array_merge( $base_info, [
-            'new_version' => $meta->version ?? $current,
-            'package'     => $meta->download_url ?? ''
-        ] );
-
-        unset( $trans->no_update[ $slug ] );
-        return $trans;
-    }   
-
-
-
-
-            
-
-            /** Provide plugin information for the details popup. */
+        /** Provide plugin information for the details popup. */
         public function plugin_info( $res, $action, $args ) {
             $c = $this->config;
             if ( 'plugin_information' !== $action || $args->slug !== $c['slug'] ) {
                 return $res;
             }
 
-            $meta = get_transient( 'upd_' . $c['slug'] );
+            $prefix = $c['cache_prefix'] ?? 'upd_';
+            $meta   = get_transient( $prefix . $c['slug'] );
             if ( ! $meta ) {
                 return $res;
             }
@@ -673,59 +658,61 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
                 'author_homepage' => $meta->author_homepage ?? '',
                 'requires'        => $meta->requires       ?? $meta->min_wp_version ?? '',
                 'tested'          => $meta->tested         ?? '',
-                'requires_php'    => $meta->requires_php   ?? '',   // “Requires PHP: x.x or higher”
+                'requires_php'    => $meta->requires_php   ?? '', // “Requires PHP: x.x or higher”
                 'last_updated'    => $meta->last_updated   ?? '',
                 'download_link'   => $meta->download_url   ?? '',
                 'homepage'        => $meta->homepage       ?? '',
                 'sections'        => $sections,
                 'icons'           => isset( $meta->icons )   ? (array) $meta->icons   : [],
                 'banners'         => isset( $meta->banners ) ? (array) $meta->banners : [],
-                'screenshots'     => isset( $meta->screenshots ) 
-                                       ? (array) $meta->screenshots 
-                                       : [],
+                'screenshots'     => isset( $meta->screenshots )
+                    ? (array) $meta->screenshots
+                    : [],
             ];
         }
 
-            /** Provide theme information for the details popup. */
-            public function theme_info( $res, $action, $args ) {
-                $c = $this->config;
-                $slug = $c['real_slug'] ?? $c['slug'];
-                
-                if ( 'theme_information' !== $action || $args->slug !== $slug ) {
-                    return $res;
-                }
+        /** Provide theme information for the details popup. */
+        public function theme_info( $res, $action, $args ) {
+            $c    = $this->config;
+            $slug = $c['real_slug'] ?? $c['slug'];
 
-                $meta = get_transient( 'upd_' . $c['slug'] );
-                if ( ! $meta ) {
-                    return $res;
-                }
-                // Safely extract changelog HTML
-                if ( isset( $meta->changelog_html ) ) {
-                    $changelog = $meta->changelog_html;
-                } elseif ( isset( $meta->sections ) ) {
-                    if ( is_array( $meta->sections ) ) {
-                        $changelog = $meta->sections['changelog'] ?? '';
-                    } elseif ( is_object( $meta->sections ) ) {
-                        $changelog = $meta->sections->changelog ?? '';
-                    } else {
-                        $changelog = '';
-                    }
+            if ( 'theme_information' !== $action || $args->slug !== $slug ) {
+                return $res;
+            }
+
+            $prefix = $c['cache_prefix'] ?? 'upd_';
+            $meta   = get_transient( $prefix . $c['slug'] );
+            if ( ! $meta ) {
+                return $res;
+            }
+
+            // Safely extract changelog HTML
+            if ( isset( $meta->changelog_html ) ) {
+                $changelog = $meta->changelog_html;
+            } elseif ( isset( $meta->sections ) ) {
+                if ( is_array( $meta->sections ) ) {
+                    $changelog = $meta->sections['changelog'] ?? '';
+                } elseif ( is_object( $meta->sections ) ) {
+                    $changelog = $meta->sections->changelog ?? '';
                 } else {
                     $changelog = '';
                 }
-
-                return (object) [
-                    'name'          => $c['name'],
-                    'slug'          => $c['real_slug'] ?? $c['slug'],
-                    'version'       => $meta->version ?? '',
-                    'tested'        => $meta->tested ?? '',
-                    'requires'      => $meta->min_wp_version ?? '',
-                    'sections'      => [ 'changelog' => $changelog ],
-                    'download_link' => $meta->download_url ?? '',
-                    'icons'         => isset( $meta->icons )   ? (array) $meta->icons   : [],
-                    'banners'       => isset( $meta->banners ) ? (array) $meta->banners : [],
-                ];
+            } else {
+                $changelog = '';
             }
+
+            return (object) [
+                'name'          => $c['name'],
+                'slug'          => $c['real_slug'] ?? $c['slug'],
+                'version'       => $meta->version ?? '',
+                'tested'        => $meta->tested ?? '',
+                'requires'      => $meta->min_wp_version ?? '',
+                'sections'      => [ 'changelog' => $changelog ],
+                'download_link' => $meta->download_url ?? '',
+                'icons'         => isset( $meta->icons )   ? (array) $meta->icons   : [],
+                'banners'       => isset( $meta->banners ) ? (array) $meta->banners : [],
+            ];
+        }
 
         /** Optional debug logger. */
         private function log( $msg ) {
@@ -735,20 +722,20 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
             }
         }
 
-
         private static function ends_with( $haystack, $needle ) {
             if ( function_exists( 'str_ends_with' ) ) {
                 return \str_ends_with( (string) $haystack, (string) $needle );
             }
             $haystack = (string) $haystack;
             $needle   = (string) $needle;
-            if ( $needle === '' ) return true;
-            if ( strlen( $needle ) > strlen( $haystack ) ) return false;
+            if ( $needle === '' ) {
+                return true;
+            }
+            if ( strlen( $needle ) > strlen( $haystack ) ) {
+                return false;
+            }
             return substr( $haystack, -strlen( $needle ) ) === $needle;
         }
-
-
-
 
         /**
          * NEW STATIC HELPER: register everything (was the global function before).
@@ -763,7 +750,8 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
             $our_file   = $config['plugin_file'] ?? null;
             $slug       = $config['slug'];
             $textdomain = ! empty( $config['textdomain'] ) ? $config['textdomain'] : $slug;
-            // Only register plugin row meta for plugins, not themes
+
+            // Only register plugin row meta for plugins, not themes.
             if ( $our_file ) {
                 add_filter(
                     'plugin_row_meta',
@@ -789,52 +777,52 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
                 );
             }
 
-
             // 3) Hook up the manual‐check listener:
             add_action( 'admin_action_uupd_manual_check', function() use ( $slug, $config ) {
-            // 1) Grab the requested slug and normalize it.
-            $request_slug = isset( $_REQUEST['slug'] ) ? sanitize_key( wp_unslash( $_REQUEST['slug'] ) ) : '';
+                // 1) Grab the requested slug and normalize it.
+                $request_slug = isset( $_REQUEST['slug'] ) ? sanitize_key( wp_unslash( $_REQUEST['slug'] ) ) : '';
 
-            // 2) If the incoming 'slug' doesn’t match this plugin’s slug, bail out early:
-            if ( $request_slug !== $slug ) {
-                return; 
-            }
+                // 2) If the incoming 'slug' doesn’t match this plugin’s slug, bail out early:
+                if ( $request_slug !== $slug ) {
+                    return;
+                }
 
-            // 3) Only users who can update plugins/themes should proceed.
-            if ( ! current_user_can( 'update_plugins' ) && ! current_user_can( 'update_themes' ) ) {
-                wp_die( __( 'Cheatin’ uh?' ) );
-            }
+                // 3) Only users who can update plugins/themes should proceed.
+                if ( ! current_user_can( 'update_plugins' ) && ! current_user_can( 'update_themes' ) ) {
+                    wp_die( __( 'Cheatin’ uh?' ) );
+                }
 
-            // 4) Verify the nonce for this slug.
-            $nonce     = isset( $_REQUEST['_wpnonce'] ) ? wp_unslash( $_REQUEST['_wpnonce'] ) : '';
-            $checkname = 'uupd_manual_check_' . $slug;
-            if ( ! wp_verify_nonce( $nonce, $checkname ) ) {
-                wp_die( __( 'Security check failed.' ) );
-            }
+                // 4) Verify the nonce for this slug.
+                $nonce     = isset( $_REQUEST['_wpnonce'] ) ? wp_unslash( $_REQUEST['_wpnonce'] ) : '';
+                $checkname = 'uupd_manual_check_' . $slug;
+                if ( ! wp_verify_nonce( $nonce, $checkname ) ) {
+                    wp_die( __( 'Security check failed.' ) );
+                }
 
-            // 5) It’s our plugin’s “manual check,” so clear the transient and force WP to fetch again.
-            delete_transient( 'upd_' . $slug );
+                // 5) It’s our plugin’s “manual check,” so clear the transient and force WP to fetch again.
+                $prefix = $config['cache_prefix'] ?? 'upd_';
+                delete_transient( $prefix . $slug );
+                delete_transient( $prefix . $slug . '_error' );
 
-            //ALSO clear GitHub release cache if using GitHub
-            if ( isset( $config['server'] ) && strpos( $config['server'], 'github.com' ) !== false ) {
-                $repo_url  = rtrim( $config['server'], '/' );
-                $gh_key    = 'uupd_github_release_' . md5( $repo_url );
-                delete_transient( $gh_key );
-            }
+                // ALSO clear GitHub release cache if using GitHub.
+                if ( isset( $config['server'] ) && strpos( $config['server'], 'github.com' ) !== false ) {
+                    $repo_url = rtrim( $config['server'], '/' );
+                    $gh_key   = 'uupd_github_release_' . md5( $repo_url );
+                    delete_transient( $gh_key );
+                }
 
-            if ( ! empty( $config['plugin_file'] ) ) {
-                wp_update_plugins();
-                $redirect = wp_get_referer() ?: admin_url( 'plugins.php' );
-            } else {
-                wp_update_themes();
-                $redirect = wp_get_referer() ?: admin_url( 'themes.php' );
-            }
+                if ( ! empty( $config['plugin_file'] ) ) {
+                    wp_update_plugins();
+                    $redirect = wp_get_referer() ?: admin_url( 'plugins.php' );
+                } else {
+                    wp_update_themes();
+                    $redirect = wp_get_referer() ?: admin_url( 'themes.php' );
+                }
 
-            $redirect = self::apply_filters_per_slug( 'uupd/manual_check_redirect', $redirect, $slug );
-            wp_safe_redirect( $redirect );
-            exit;
-        } );
-
+                $redirect = UUPD_Updater_V1::apply_filters_per_slug( 'uupd/manual_check_redirect', $redirect, $slug );
+                wp_safe_redirect( $redirect );
+                exit;
+            } );
         }
     }
 }
