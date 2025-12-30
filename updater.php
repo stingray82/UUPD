@@ -26,6 +26,7 @@
  *
  * ───────────────────────── Compatibility / Upgrade Notes ──────────────────────
  *
+ *
  * Version 1.4.0 is intended to be **backwards compatible** for all
  * standard usage patterns from previous releases.
  *
