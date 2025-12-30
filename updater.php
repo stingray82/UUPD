@@ -1,82 +1,137 @@
 <?php
 /**
  * Universal Updater Drop-In (UUPD) for Plugins & Themes
- * --------------------------------------------------------
+ * ----------------------------------------------------
  * Supports:
  *  - Private update servers (via JSON metadata)
- *  - GitHub-based updates (auto-detected via `server` URL)
- *  - Manual update triggers
+ *  - GitHub Releases-based updates (public or private)
+ *  - Manual “Check for updates” trigger
  *  - Caching via WordPress transients
- *  - Optional GitHub authentication (for private repos or rate-limiting)
+ *  - Optional GitHub authentication (private repos / private release assets / rate limits)
  *
  * Safe to include multiple times. Class is namespaced and encapsulated.
  *
- * ╭───────────────────────────── GitHub Token Filters ─────────────────────────────╮
  *
- * ➤ Override GitHub tokens globally or per plugin slug:
+ * ───────────────────────── Compatibility / Upgrade Notes ─────────────────────────
  *
- *   // A. Apply a single fallback token for all GitHub plugins:
+ * Version 1.4.0 is intended to be backwards compatible for standard usage:
+ *  - JSON mode: `server` points at your JSON metadata endpoint
+ *  - GitHub Releases mode: `server` is the repo root URL: https://github.com/<owner>/<repo>
+ *
+ * Notes for edge cases:
+ *  - GitHub auto-detection is stricter in 1.4.0: it triggers ONLY for repo-root URLs.
+ *    If you used a non-root GitHub URL previously, set: 'mode' => 'github_release'
+ *  - If a GitHub token is configured, UUPD adds Authorization headers to outgoing requests
+ *    to github.com / api.github.com (needed for private repos/assets and rate limits).
+
+ *
+ * ───────────────────────────── GitHub Modes ─────────────────────────────
+ *
+ * UUPD supports 2 update “modes”:
+ *
+ * 1) JSON mode (private update server)
+ *    - Set `server` to your JSON metadata URL (recommended: ends with `.json`)
+ *    - Example: https://example.com/uupd/index.json
+ *
+ * 2) GitHub Releases mode
+ *    - Set `server` to the GitHub repo root URL:
+ *      https://github.com/<owner>/<repo>
+ *    - UUPD will call the GitHub API:
+ *      https://api.github.com/repos/<owner>/<repo>/releases/latest
+ *    - For private repos / private release assets you MUST provide a token.
+ *
+ * Auto-detection:
+ *  - In `mode = auto` (default), GitHub Releases mode is used ONLY when `server`
+ *    is a GitHub repo root URL: https://github.com/owner/repo
+ *  - Otherwise UUPD assumes JSON mode.
+ *
+ * Force a mode explicitly (optional):
+ *  - 'mode' => 'auto'          // default
+ *  - 'mode' => 'json'          // always use JSON metadata
+ *  - 'mode' => 'github_release'// always use GitHub Releases
+ *
+ * ───────────────────────── GitHub Token Filters ─────────────────────────
+ *
+ * ➤ Override GitHub tokens globally or per slug:
+ *
+ *   // A) Single fallback token for all GitHub configs:
  *   add_filter( 'uupd/github_token_override', function( $token, $slug ) {
  *       return 'ghp_yourGlobalFallbackToken';
  *   }, 10, 2 );
  *
- *   // B. Apply per-slug tokens only when needed:
+ *   // B) Per-slug tokens:
  *   add_filter( 'uupd/github_token_override', function( $token, $slug ) {
  *       $tokens = [
  *           'plugin-slug-1' => 'ghp_tokenForPlugin1',
- *           'plugin-slug-2' => 'ghp_tokenForPlugin2',
+ *           'theme-slug-2'  => 'ghp_tokenForTheme2',
  *       ];
  *       return $tokens[ $slug ] ?? $token;
  *   }, 10, 2 );
  *
- * ╰────────────────────────────────────────────────────────────────────────────────╯
+ * Token scopes:
+ *  - Private repo updates generally require a token with appropriate repo access.
  *
- * ╭──────────────────────────── Plugin Integration ─────────────────────────────╮
+ * ─────────────────────────── Plugin Integration ───────────────────────────
  *
- * 1. Save this file to: `includes/updater.php` inside your plugin.
+ * 1) Save this file to: `includes/updater.php` inside your plugin.
  *
- * 2. In your main plugin file (e.g. `my-plugin.php`), add:
+ * 2) In your main plugin file (e.g. `my-plugin.php`), add:
  *
  *    add_action( 'plugins_loaded', function() {
  *        require_once __DIR__ . '/includes/updater.php';
  *
  *        $updater_config = [
- *            'plugin_file'   => plugin_basename( __FILE__ ),     // e.g. "my-plugin/my-plugin.php"
- *            'slug'          => 'my-plugin-slug',                // must match your update slug
- *            'name'          => 'My Plugin Name',                // shown in the update UI
+ *            'plugin_file'   => plugin_basename( __FILE__ ),     // "my-plugin/my-plugin.php"
+ *            'slug'          => 'my-plugin-slug',                // your update slug
+ *            'name'          => 'My Plugin Name',                // shown in update UI
  *            'version'       => MY_PLUGIN_VERSION,               // define as constant
- *            'key'           => 'YourSecretKeyHere',             // optional if using GitHub
- *            'server'        => 'https://github.com/user/repo',  // GitHub or private server
- *            'github_token'  => 'ghp_YourTokenHere',             // optional
- *            // 'textdomain'    => 'my-plugin-textdomain',       // optional, defaults to 'slug'
- *            // 'allow_prerelease' => false,                     // Optional — default is false. Set to true to allow beta/RC updates.
- *            // 'cache_prefix' => 'upd_',                        // optional, default 'upd_'
+ *
+ *            // Choose ONE of:
+ *            // JSON mode:
+ *            // 'server' => 'https://example.com/uupd/index.json',
+ *
+ *            // GitHub Releases mode:
+ *            'server'        => 'https://github.com/user/repo',
+ *            'github_token'  => 'ghp_YourTokenHere',             // required for private repos/assets
+ *
+ *            // Optional:
+ *            // 'mode'             => 'auto',                    // auto|json|github_release
+ *            // 'github_asset_name'=> 'my-plugin.zip',           // defaults to "<slug>.zip"
+ *            // 'allow_prerelease' => false,                     // default false
+ *            // 'cache_prefix'      => 'upd_',                   // default 'upd_'
+ *            // 'textdomain'        => 'my-plugin-textdomain',   // default = slug
  *        ];
  *
  *        \UUPD\V1\UUPD_Updater_V1::register( $updater_config );
  *    }, 1 );
  *
- * ╰─────────────────────────────────────────────────────────────────────────────╯
+ * ─────────────────────────── Theme Integration ───────────────────────────
  *
- * ╭──────────────────────────── Theme Integration ──────────────────────────────╮
+ * 1) Save this file to: `includes/updater.php` inside your theme.
  *
- * 1. Save this file to: `includes/updater.php` inside your theme.
- *
- * 2. In your `functions.php`, add:
+ * 2) In your theme’s `functions.php`, add:
  *
  *    add_action( 'after_setup_theme', function() {
  *        require_once get_stylesheet_directory() . '/includes/updater.php';
  *
  *        $updater_config = [
- *            'slug'         => 'my-theme-folder',                // must match theme folder
+ *            'slug'         => 'my-theme-folder',                // must match theme folder name
  *            'name'         => 'My Theme Name',
  *            'version'      => '1.0.0',                          // match style.css Version
- *            'key'          => 'YourSecretKeyHere',              // optional if using GitHub
- *            'server'       => 'https://github.com/user/repo',   // GitHub or private
- *            'github_token' => 'ghp_YourTokenHere',              // optional
- *            // 'textdomain'    => 'my-theme-textdomain',
- *            // 'allow_prerelease' => false,                     // <--- NEW: optional, defaults to false
- *            // 'cache_prefix'    => 'upd_',                     // optional, default 'upd_'
+ *
+ *            // JSON mode:
+ *            // 'server' => 'https://example.com/uupd/index.json',
+ *
+ *            // GitHub Releases mode:
+ *            'server'       => 'https://github.com/user/repo',
+ *            'github_token' => 'ghp_YourTokenHere',              // required for private repos/assets
+ *
+ *            // Optional:
+ *            // 'mode'              => 'auto',                   // auto|json|github_release
+ *            // 'github_asset_name' => 'my-theme.zip',           // defaults to "<slug>.zip"
+ *            // 'allow_prerelease'  => false,                    // default false
+ *            // 'cache_prefix'      => 'upd_',                   // default 'upd_'
+ *            // 'textdomain'        => 'my-theme-textdomain',
  *        ];
  *
  *        add_action( 'admin_init', function() use ( $updater_config ) {
@@ -84,49 +139,49 @@
  *        } );
  *    } );
  *
- * ╰─────────────────────────────────────────────────────────────────────────────╯
+ * ───────────────────────── Cache Duration Filters ─────────────────────────
  *
- * ╭────────────────────────────── Cache Duration Filters ───────────────────────────────╮
+ * ➤ Customize caching (success or failure) per slug or globally:
  *
- * ➤ Customize how long update data is cached (success or failure) per slug or globally:
- *
- *   // A. Change success cache duration (default: 6 hours):
+ *   // A) Success cache duration (default: 6 hours):
  *   add_filter( 'uupd_success_cache_ttl', function( $ttl, $slug ) {
  *       if ( $slug === 'my-plugin-slug' ) {
- *           return 1 * HOUR_IN_SECONDS; // Cache successful metadata for 1 hour
+ *           return 1 * HOUR_IN_SECONDS;
  *       }
  *       return $ttl;
  *   }, 10, 2 );
  *
- *   // B. Change error cache duration (e.g., if remote server is unreachable):
+ *   // B) Error cache duration (default: 6 hours):
  *   add_filter( 'uupd_fetch_remote_error_ttl', function( $ttl, $slug ) {
- *       return 15 * MINUTE_IN_SECONDS; // Retry failed fetches after 15 minutes
+ *       return 15 * MINUTE_IN_SECONDS;
  *   }, 10, 2 );
  *
- * ╰──────────────────────────────────────────────────────────────────────────────────────╯
+ * ───────────────────────────── Optional Debugging ─────────────────────────────
  *
- * 🔧 Optional Debugging:
- *     Add this anywhere in your code:
- *         add_filter( 'updater_enable_debug', fn( $e ) => true );
+ *   add_filter( 'updater_enable_debug', fn( $e ) => true );
+ * 	 Or PHP Less than 7.4
+ *   add_filter( 'updater_enable_debug', function( $e ) { return true; } );
+
  *
- *     Also enable in wp-config.php:
- *         define( 'WP_DEBUG', true );
- *         define( 'WP_DEBUG_LOG', true );
+ *   In wp-config.php:
+ *     define( 'WP_DEBUG', true );
+ *     define( 'WP_DEBUG_LOG', true );
  *
  * What This Does:
- *  - Detects updates from GitHub or private JSON endpoints
- *  - Auto-selects GitHub logic if `server` contains "github.com"
+ *  - Fetches update metadata from a JSON endpoint OR GitHub Releases
  *  - Caches metadata in `{cache_prefix}{slug}` (default `upd_{slug}`) for 6 hours
- *  - Injects WordPress update data via native transients
- *  - Adds “View details” + “Check for updates” under plugin/theme row
- *  - Works seamlessly with `wp_update_plugins()` or `wp_update_themes()`
+ *  - Injects update data into native WP plugin/theme update transients
+ *  - Adds “View details” + “Check for updates” under plugin row (plugins)
+ *  - Works with `wp_update_plugins()` and `wp_update_themes()`
  *
  * Scoped Filters:
- *   All filters like `uupd/server_url`, `uupd/remote_url`, etc., also support per-slug filters.
+ *   All filters like `uupd/server_url`, `uupd/remote_url`, etc. support per-slug variants.
  *   Example:
- *      add_filter( 'uupd/server_url/my-plugin-slug', function( $url ) {
- *          return 'https://mydomain.com/my-endpoint';
- *      });
+ *     add_filter( 'uupd/server_url/my-plugin-slug', function( $url ) {
+ *         return 'https://mydomain.com/my-endpoint';
+ *     } );
+ *
+ *
  */
 
 namespace UUPD\V1;
@@ -135,7 +190,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
 
     class UUPD_Updater_V1 {
 
-        const VERSION = '1.3.2'; // Change as needed
+        const VERSION = '1.4.0'; // Change as needed
 
         /** @var array Configuration settings */
         private $config;
@@ -190,18 +245,44 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
             $this->register_hooks();
         }
 
-        /** Attach update and info filters for plugin or theme. */
-        private function register_hooks() {
-            if ( ! empty( $this->config['plugin_file'] ) ) {
-                add_filter( 'pre_set_site_transient_update_plugins', [ $this, 'plugin_update' ] );
-                add_filter( 'site_transient_update_plugins',         [ $this, 'plugin_update' ] ); // WP 6.8
-                add_filter( 'plugins_api',                           [ $this, 'plugin_info' ], 10, 3 );
-            } else {
-                add_filter( 'pre_set_site_transient_update_themes', [ $this, 'theme_update' ] );
-                add_filter( 'site_transient_update_themes',         [ $this, 'theme_update' ] ); // WP 6.8
-                add_filter( 'themes_api',                           [ $this, 'theme_info' ], 10, 3 );
-            }
-        }
+       /**
+		 * Filter outgoing HTTP requests so GitHub downloads include auth headers when needed.
+		 *
+		 * @param array  $args HTTP request arguments.
+		 * @param string $url  Request URL.
+		 * @return array
+		 */
+		public function filter_http_request_args( $args, $url ) {
+
+		    $url = (string) $url;
+
+		    // Only touch GitHub URLs (public + API).
+		    if ( strpos( $url, 'github.com/' ) === false && strpos( $url, 'api.github.com/' ) === false ) {
+		        return $args;
+		    }
+
+		    return $this->add_github_auth_headers_for_download( $args, $url );
+		}
+
+		/** Attach update and info filters for plugin or theme. */
+		private function register_hooks() {
+
+		    // 1) Normal WP update hooks
+		    if ( ! empty( $this->config['plugin_file'] ) ) {
+		        add_filter( 'pre_set_site_transient_update_plugins', [ $this, 'plugin_update' ] );
+		        add_filter( 'site_transient_update_plugins',         [ $this, 'plugin_update' ] ); // WP 6.8
+		        add_filter( 'plugins_api',                           [ $this, 'plugin_info' ], 10, 3 );
+		    } else {
+		        add_filter( 'pre_set_site_transient_update_themes', [ $this, 'theme_update' ] );
+		        add_filter( 'site_transient_update_themes',         [ $this, 'theme_update' ] ); // WP 6.8
+		        add_filter( 'themes_api',                           [ $this, 'theme_info' ], 10, 3 );
+		    }
+
+		    // 2) Add GitHub auth headers when WP downloads metadata or zip packages.
+		    //    This is essential for private repos and private release assets.
+		    add_filter( 'http_request_args', [ $this, 'filter_http_request_args' ], 10, 2 );
+		}
+
 
         /** Fetch metadata JSON from remote server and cache it. */
         private function fetch_remote() {
@@ -223,8 +304,15 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
             $host_qs = rawurlencode( wp_parse_url( untrailingslashit( home_url() ), PHP_URL_HOST ) );
 
             $separator = strpos( $c['server'], '?' ) === false ? '?' : '&';
-            $url       = ( self::ends_with( $c['server'], '.json' ) ? $c['server'] : untrailingslashit( $c['server'] ) )
-                       . $separator . "action=get_metadata&slug={$slug_qs}&key={$key_qs}&domain={$host_qs}";
+            $is_json = self::ends_with( $c['server'], '.json' );
+
+			if ( $is_json ) {
+			    $url = $c['server'];
+			} else {
+			    $separator = strpos( $c['server'], '?' ) === false ? '?' : '&';
+			    $url = untrailingslashit( $c['server'] ) . $separator . "action=get_metadata&slug={$slug_qs}&key={$key_qs}&domain={$host_qs}";
+			}
+
 
             // Allow full override of constructed URL.
             $url = self::apply_filters_per_slug( 'uupd/remote_url', $url, $slug_plain );
@@ -354,75 +442,85 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
 
             // Fetch metadata if missing
             if ( false === $meta ) {
-                if ( isset( $c['server'] ) && strpos( $c['server'], 'github.com' ) !== false ) {
-                    $repo_url  = rtrim( $c['server'], '/' );
-                    $cache_key = 'uupd_github_release_' . md5( $repo_url );
-                    $release   = get_transient( $cache_key );
+			    if ( $this->should_use_github_release_mode() ) {
 
-                    if ( false === $release ) {
-                        $api_url = str_replace( 'github.com', 'api.github.com/repos', $repo_url ) . '/releases/latest';
-                        $token   = self::apply_filters_per_slug( 'uupd/github_token_override', $c['github_token'] ?? '', $slug );
+			        $repo_url  = rtrim( $c['server'], '/' );
+			        $cache_key = 'uupd_github_release_' . md5( $repo_url );
+			        $release   = get_transient( $cache_key );
 
-                        $headers = [ 'Accept' => 'application/vnd.github.v3+json' ];
-                        if ( $token ) {
-                            $headers['Authorization'] = 'token ' . $token;
-                        }
+			        if ( false === $release ) {
 
-                        $this->log( " GitHub fetch: $api_url" );
-                        $response = wp_remote_get( $api_url, [ 'headers' => $headers ] );
+			            $api_url = $this->github_latest_release_api_url( $repo_url );
 
-                        if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
-                            $release = json_decode( wp_remote_retrieve_body( $response ) );
-                            $ttl     = self::apply_filters_per_slug( 'uupd_success_cache_ttl', 6 * HOUR_IN_SECONDS, $slug );
-                            set_transient( $cache_key, $release, $ttl );
-                        } else {
-                            $msg = is_wp_error( $response ) ? $response->get_error_message() : 'Invalid HTTP response';
-                            $this->log( "✗ GitHub API failed — $msg — caching error state" );
-                            set_transient(
-                                $error_key,
-                                time(),
-                                self::apply_filters_per_slug( 'uupd_fetch_remote_error_ttl', 6 * HOUR_IN_SECONDS, $slug )
-                            );
-                            do_action( 'uupd_metadata_fetch_failed', [ 'slug' => $slug, 'server' => $repo_url, 'message' => $msg ] );
-                            do_action( "uupd_metadata_fetch_failed/{$slug}", [ 'slug' => $slug, 'server' => $repo_url, 'message' => $msg ] );
-                            return $trans;
-                        }
-                    }
+			            $token = self::apply_filters_per_slug(
+			                'uupd/github_token_override',
+			                $c['github_token'] ?? '',
+			                $c['slug'] ?? ''
+			            );
 
-                    if ( isset( $release->tag_name ) ) {
-                        $zip_url = $release->zipball_url;
+			            $headers = [
+			                'Accept'     => 'application/vnd.github.v3+json',
+			                'User-Agent' => 'WordPress-UUPD',
+			            ];
 
-                        // Prefer an uploaded .zip asset if one exists
-                        foreach ( $release->assets ?? [] as $asset ) {
-                            if ( isset( $asset->name, $asset->browser_download_url ) && self::ends_with( $asset->name, '.zip' ) ) {
-                                $zip_url = $asset->browser_download_url;
-                                break;
-                            }
-                        }
+			            if ( $token ) {
+			                $headers['Authorization'] = 'token ' . $token;
+			            }
 
-                        $meta = (object) [
-                            'version'      => ltrim( $release->tag_name, 'v' ),
-                            'download_url' => $zip_url,
-                            'homepage'     => $release->html_url ?? $repo_url,
-                            'sections'     => [ 'changelog' => $release->body ?? '' ],
-                        ];
-                    } else {
-                        $meta = (object) [
-                            'version'      => $c['version'],
-                            'download_url' => '',
-                            'homepage'     => $repo_url,
-                            'sections'     => [ 'changelog' => '' ],
-                        ];
-                    }
+			            $this->log( " GitHub fetch: $api_url" );
+			            $response = wp_remote_get( $api_url, [ 'headers' => $headers, 'timeout' => 15 ] );
 
-                    // Success: clear the error flag for this slug (if any)
-                    delete_transient( $error_key );
+			            if ( ! is_wp_error( $response ) && (int) wp_remote_retrieve_response_code( $response ) === 200 ) {
+			                $release = json_decode( wp_remote_retrieve_body( $response ) );
+			                $ttl     = self::apply_filters_per_slug( 'uupd_success_cache_ttl', 6 * HOUR_IN_SECONDS, $slug );
+			                set_transient( $cache_key, $release, $ttl );
+			            } else {
+			                $msg = is_wp_error( $response ) ? $response->get_error_message() : ( 'HTTP ' . wp_remote_retrieve_response_code( $response ) );
+			                $this->log( "✗ GitHub API failed — {$msg} — caching error state" );
 
-                } else {
-                    $this->fetch_remote(); // Handles error logging + failure cache internally
-                    $meta = get_transient( $cache_id );
-                }
-            }
+			                set_transient(
+			                    $error_key,
+			                    time(),
+			                    self::apply_filters_per_slug( 'uupd_fetch_remote_error_ttl', 6 * HOUR_IN_SECONDS, $slug )
+			                );
+
+			                do_action( 'uupd_metadata_fetch_failed', [ 'slug' => $slug, 'server' => $repo_url, 'message' => $msg ] );
+			                do_action( "uupd_metadata_fetch_failed/{$slug}", [ 'slug' => $slug, 'server' => $repo_url, 'message' => $msg ] );
+			                return $trans;
+			            }
+			        }
+
+			        if ( isset( $release->tag_name ) ) {
+
+			            // Private-safe: API asset endpoint (/releases/assets/{id})
+			            $zip_url = $this->github_release_download_url( $repo_url, $release );
+
+			            $meta = (object) [
+			                'version'      => ltrim( (string) $release->tag_name, 'v' ),
+			                'download_url' => $zip_url,
+			                'homepage'     => $release->html_url ?? $repo_url,
+			                'sections'     => [ 'changelog' => $release->body ?? '' ],
+			            ];
+
+			        } else {
+			            $meta = (object) [
+			                'version'      => $c['version'],
+			                'download_url' => '',
+			                'homepage'     => $repo_url,
+			                'sections'     => [ 'changelog' => '' ],
+			            ];
+			        }
+
+			        // Success: clear the error flag for this slug (if any)
+			        delete_transient( $error_key );
+
+			    } else {
+
+			        $this->fetch_remote(); // Handles error logging + failure cache internally
+			        $meta = get_transient( $cache_id );
+			    }
+			}
+
 
             // If still no metadata, bail
             if ( ! $meta ) {
@@ -511,73 +609,87 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
 
             // If metadata is missing, try to fetch it (GitHub or private server)
             if ( false === $meta ) {
-                if ( isset( $c['server'] ) && strpos( $c['server'], 'github.com' ) !== false ) {
-                    $repo_url  = rtrim( $c['server'], '/' );
-                    $cache_key = 'uupd_github_release_' . md5( $repo_url );
-                    $release   = get_transient( $cache_key );
 
-                    if ( false === $release ) {
-                        $api_url = str_replace( 'github.com', 'api.github.com/repos', $repo_url ) . '/releases/latest';
-                        $token   = self::apply_filters_per_slug( 'uupd/github_token_override', $c['github_token'] ?? '', $slug );
+			    if ( $this->should_use_github_release_mode() ) {
 
-                        $headers = [ 'Accept' => 'application/vnd.github.v3+json' ];
-                        if ( $token ) {
-                            $headers['Authorization'] = 'token ' . $token;
-                        }
+			        $repo_url  = rtrim( $c['server'], '/' );
+			        $cache_key = 'uupd_github_release_' . md5( $repo_url );
+			        $release   = get_transient( $cache_key );
 
-                        $this->log( " GitHub fetch: $api_url" );
-                        $response = wp_remote_get( $api_url, [ 'headers' => $headers ] );
+			        if ( false === $release ) {
 
-                        if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
-                            $release = json_decode( wp_remote_retrieve_body( $response ) );
-                            $ttl     = self::apply_filters_per_slug( 'uupd_success_cache_ttl', 6 * HOUR_IN_SECONDS, $slug );
-                            set_transient( $cache_key, $release, $ttl );
-                        } else {
-                            $this->log( 'GitHub API fetch failed — caching error state' );
-                            set_transient(
-                                $error_key,
-                                time(),
-                                self::apply_filters_per_slug( 'uupd_fetch_remote_error_ttl', 6 * HOUR_IN_SECONDS, $slug )
-                            );
-                            do_action( 'uupd_metadata_fetch_failed', [ 'slug' => $c['slug'], 'server' => $repo_url, 'message' => 'GitHub fetch failed' ] );
-                            do_action( "uupd_metadata_fetch_failed/{$c['slug']}", [ 'slug' => $c['slug'], 'server' => $repo_url, 'message' => 'GitHub fetch failed' ] );
-                            return $trans;
-                        }
-                    }
+			            $api_url = $this->github_latest_release_api_url( $repo_url );
 
-                    if ( isset( $release->tag_name ) ) {
-                        $zip_url = $release->zipball_url;
+			            // IMPORTANT: token filter should be keyed on config slug, not real theme slug
+			            $token = self::apply_filters_per_slug(
+			                'uupd/github_token_override',
+			                $c['github_token'] ?? '',
+			                $c['slug'] ?? ''
+			            );
 
-                        // Prefer an uploaded .zip asset if one exists
-                        foreach ( $release->assets ?? [] as $asset ) {
-                            if ( isset( $asset->name, $asset->browser_download_url ) && self::ends_with( $asset->name, '.zip' ) ) {
-                                $zip_url = $asset->browser_download_url;
-                                break;
-                            }
-                        }
+			            $headers = [
+			                'Accept'     => 'application/vnd.github.v3+json',
+			                'User-Agent' => 'WordPress-UUPD',
+			            ];
 
-                        $meta = (object) [
-                            'version'      => ltrim( $release->tag_name, 'v' ),
-                            'download_url' => $zip_url,
-                            'homepage'     => $release->html_url ?? $repo_url,
-                            'sections'     => [ 'changelog' => $release->body ?? '' ],
-                        ];
-                    } else {
-                        $meta = (object) [
-                            'version'      => $c['version'],
-                            'download_url' => '',
-                            'homepage'     => $repo_url,
-                            'sections'     => [ 'changelog' => '' ],
-                        ];
-                    }
+			            if ( $token ) {
+			                $headers['Authorization'] = 'token ' . $token;
+			            }
 
-                    // Success: clear the error flag for this slug (if any)
-                    delete_transient( $error_key );
-                } else {
-                    $this->fetch_remote(); // will handle error caching internally
-                    $meta = get_transient( $cache_id );
-                }
-            }
+			            $this->log( " GitHub fetch: $api_url" );
+			            $response = wp_remote_get( $api_url, [ 'headers' => $headers, 'timeout' => 15 ] );
+
+			            if ( ! is_wp_error( $response ) && (int) wp_remote_retrieve_response_code( $response ) === 200 ) {
+			                $release = json_decode( wp_remote_retrieve_body( $response ) );
+			                $ttl     = self::apply_filters_per_slug( 'uupd_success_cache_ttl', 6 * HOUR_IN_SECONDS, $slug );
+			                set_transient( $cache_key, $release, $ttl );
+			            } else {
+			                $msg = is_wp_error( $response ) ? $response->get_error_message() : ( 'HTTP ' . wp_remote_retrieve_response_code( $response ) );
+			                $this->log( "✗ GitHub API failed — {$msg} — caching error state" );
+
+			                set_transient(
+			                    $error_key,
+			                    time(),
+			                    self::apply_filters_per_slug( 'uupd_fetch_remote_error_ttl', 6 * HOUR_IN_SECONDS, $slug )
+			                );
+
+			                do_action( 'uupd_metadata_fetch_failed', [ 'slug' => $c['slug'], 'server' => $repo_url, 'message' => $msg ] );
+			                do_action( "uupd_metadata_fetch_failed/{$c['slug']}", [ 'slug' => $c['slug'], 'server' => $repo_url, 'message' => $msg ] );
+			                return $trans;
+			            }
+			        }
+
+			        if ( isset( $release->tag_name ) ) {
+
+			            // Private-safe: API asset endpoint (/releases/assets/{id})
+			            $zip_url = $this->github_release_download_url( $repo_url, $release );
+
+			            $meta = (object) [
+			                'version'      => ltrim( (string) $release->tag_name, 'v' ),
+			                'download_url' => $zip_url,
+			                'homepage'     => $release->html_url ?? $repo_url,
+			                'sections'     => [ 'changelog' => $release->body ?? '' ],
+			            ];
+
+			        } else {
+			            $meta = (object) [
+			                'version'      => $c['version'],
+			                'download_url' => '',
+			                'homepage'     => $repo_url,
+			                'sections'     => [ 'changelog' => '' ],
+			            ];
+			        }
+
+			        // Success: clear the error flag for this slug (if any)
+			        delete_transient( $error_key );
+
+			    } else {
+
+			        $this->fetch_remote(); // will handle error caching internally
+			        $meta = get_transient( $cache_id );
+			    }
+			}
+
 
             // If still no metadata, bail before touching $meta->...
             if ( ! $meta ) {
@@ -721,6 +833,156 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
                 do_action( 'uupd/log', $msg, $this->config['slug'] ?? '' );
             }
         }
+
+        private function is_github_repo_root_url( $url ) {
+		    $url = trim( (string) $url );
+		    if ( $url === '' ) return false;
+
+		    $parts = wp_parse_url( $url );
+		    if ( empty( $parts['host'] ) ) return false;
+
+		    // Only github.com repo root should trigger GitHub release mode
+		    if ( strtolower( $parts['host'] ) !== 'github.com' ) return false;
+
+		    $path = trim( $parts['path'] ?? '', '/' );
+		    if ( $path === '' ) return false;
+
+		    $segments = explode( '/', $path );
+		    // Repo root is exactly: /owner/repo
+		    return count( $segments ) === 2;
+		}
+
+		private function get_mode() {
+		    $mode = $this->config['mode'] ?? 'auto';
+		    $mode = strtolower( trim( (string) $mode ) );
+		    return in_array( $mode, [ 'auto', 'json', 'github_release' ], true ) ? $mode : 'auto';
+		}
+
+		private function should_use_github_release_mode() {
+		    $mode   = $this->get_mode();
+		    $server = $this->config['server'] ?? '';
+
+		    if ( $mode === 'json' ) return false;
+		    if ( $mode === 'github_release' ) return true;
+
+		    // auto:
+		    return $this->is_github_repo_root_url( $server );
+		}
+
+		private function add_github_auth_headers_for_download( $args, $url ) {
+		    $slug  = $this->config['slug'] ?? '';
+		    $token = self::apply_filters_per_slug(
+		        'uupd/github_token_override',
+		        $this->config['github_token'] ?? '',
+		        $slug
+		    );
+
+		    if ( ! $token ) {
+		        return $args;
+		    }
+
+		    $args['headers'] = $args['headers'] ?? [];
+		    $args['headers']['Authorization'] = 'token ' . $token;
+		    $args['headers']['User-Agent']    = $args['headers']['User-Agent'] ?? 'WordPress-UUPD';
+
+		    // GitHub asset API requires this to stream the binary
+		    if ( strpos( $url, 'api.github.com/repos/' ) !== false && strpos( $url, '/releases/assets/' ) !== false ) {
+		        $args['headers']['Accept'] = 'application/octet-stream';
+		    }
+
+		    return $args;
+		}
+
+
+		/**
+		 * Determine which asset name to pick from a GitHub release.
+		 * Priority:
+		 *  1) config['github_asset_name']
+		 *  2) config['slug'] . '.zip'
+		 *  3) config['real_slug'] . '.zip'
+		 *  4) null (means: first .zip)
+		 */
+		private function get_github_asset_name() {
+		    $c = $this->config;
+
+		    if ( ! empty( $c['github_asset_name'] ) ) {
+		        return (string) $c['github_asset_name'];
+		    }
+
+		    if ( ! empty( $c['slug'] ) ) {
+		        return (string) $c['slug'] . '.zip';
+		    }
+
+		    if ( ! empty( $c['real_slug'] ) ) {
+		        return (string) $c['real_slug'] . '.zip';
+		    }
+
+		    return null;
+		}
+
+		/**
+		 * Build the GitHub API URL for /releases/latest from a repo root URL.
+		 * Example input: https://github.com/owner/repo
+		 * Output: https://api.github.com/repos/owner/repo/releases/latest
+		 */
+		private function github_latest_release_api_url( $repo_url ) {
+		    $repo_url = rtrim( (string) $repo_url, '/' );
+		    $path     = trim( (string) wp_parse_url( $repo_url, PHP_URL_PATH ), '/' ); // owner/repo
+		    return "https://api.github.com/repos/{$path}/releases/latest";
+		}
+
+		/**
+		 * Resolve the download URL for a release:
+		 * - Prefer a matching .zip asset (private-safe) via API asset endpoint
+		 * - Otherwise fall back to zipball_url
+		 */
+		private function github_release_download_url( $repo_url, $release ) {
+		    $repo_url = rtrim( (string) $repo_url, '/' );
+		    $path     = trim( (string) wp_parse_url( $repo_url, PHP_URL_PATH ), '/' ); // owner/repo
+
+		    // If we have a token, we can safely use the API asset endpoint
+		    $slug  = $this->config['slug'] ?? '';
+		    $token = self::apply_filters_per_slug(
+		        'uupd/github_token_override',
+		        $this->config['github_token'] ?? '',
+		        $slug
+		    );
+		    $use_api_assets = ! empty( $token );
+
+		    $wanted = $this->get_github_asset_name();
+		    $wanted_lc = $wanted ? strtolower( $wanted ) : null;
+
+		    if ( ! empty( $release->assets ) && is_array( $release->assets ) ) {
+
+		        if ( $wanted_lc ) {
+		            foreach ( $release->assets as $asset ) {
+		                if ( ! empty( $asset->name ) ) {
+		                    if ( strtolower( (string) $asset->name ) === $wanted_lc ) {
+		                        if ( $use_api_assets && ! empty( $asset->id ) ) {
+		                            return "https://api.github.com/repos/{$path}/releases/assets/{$asset->id}";
+		                        }
+		                        // old behaviour for public repos:
+		                        return $asset->browser_download_url ?? '';
+		                    }
+		                }
+		            }
+		        }
+
+		        foreach ( $release->assets as $asset ) {
+		            if ( ! empty( $asset->name ) && self::ends_with( strtolower( (string) $asset->name ), '.zip' ) ) {
+		                if ( $use_api_assets && ! empty( $asset->id ) ) {
+		                    return "https://api.github.com/repos/{$path}/releases/assets/{$asset->id}";
+		                }
+		                return $asset->browser_download_url ?? '';
+		            }
+		        }
+		    }
+
+		    return $release->zipball_url ?? '';
+		}
+
+
+
 
         private static function ends_with( $haystack, $needle ) {
             if ( function_exists( 'str_ends_with' ) ) {
