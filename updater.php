@@ -232,7 +232,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
 
     class UUPD_Updater_V1 {
 
-        const VERSION = '1.4.0'; // Change as needed
+        const VERSION = '1.4.0-Beta.2'; // Change as needed
 
         /** @var array Configuration settings */
         private $config;
@@ -324,6 +324,34 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
 		    //    This is essential for private repos and private release assets.
 		    add_filter( 'http_request_args', [ $this, 'filter_http_request_args' ], 10, 2 );
 		}
+
+		/**
+		 * Resolve a download URL from various common metadata keys.
+		 *
+		 * Supports multiple providers that may return different field names.
+		 *
+		 * @param object $meta
+		 * @return string
+		 */
+		private function resolve_download_url( $meta ) {
+		    if ( ! is_object( $meta ) ) return '';
+
+		    $candidates = [
+		        $meta->download_url  ?? '',
+		        $meta->package       ?? '',
+		        $meta->download_link ?? '',
+		        $meta->download_uri  ?? '',
+		        $meta->trunk         ?? '',
+		    ];
+
+		    foreach ( $candidates as $u ) {
+		        $u = trim( (string) $u );
+		        if ( $u !== '' ) return $u;
+		    }
+
+		    return '';
+		}
+
 
 
         /** Fetch metadata JSON from remote server and cache it. */
@@ -656,6 +684,17 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
                 return $trans;
             }
 
+            // Backfill download_url for compatibility (some servers return package/download_link/etc)
+			$resolved_pkg = $this->resolve_download_url( $meta );
+
+			if ( $resolved_pkg && empty( $meta->download_url ) ) {
+			    $meta->download_url = $resolved_pkg;
+			}
+
+			// Debug
+			$this->log( 'Resolved package URL (normalized): ' . ( $resolved_pkg ? $resolved_pkg : 'EMPTY' ) );
+
+
             // Compare versions
             $remote_version   = $meta->version ?? '0.0.0';
             $allow_prerelease = $this->config['allow_prerelease'] ?? false;
@@ -690,23 +729,26 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
             }
 
             // Inject update
-            $this->log( "Injecting plugin update '{$slug}' → v{$meta->version}" );
-            $trans->response[ $file ] = (object) [
-                'id'           => $file,
-                'name'         => $c['name'],
-                'slug'         => $slug,
-                'plugin'       => $file,
-                'new_version'  => $meta->version ?? $c['version'],
-                'package'      => $meta->download_url ?? '',
-                'url'          => $meta->homepage ?? '',
-                'tested'       => $meta->tested ?? '',
-                'requires'     => $meta->requires ?? $meta->min_wp_version ?? '',
-                'requires_php' => $meta->requires_php ?? '',
-                'sections'     => (array) ( $meta->sections ?? [] ),
-                'icons'        => (array) ( $meta->icons ?? [] ),
-                'banners'      => (array) ( $meta->banners ?? [] ),
-                'compatibility'=> new \stdClass(),
-            ];
+			$this->log( "Injecting plugin update '{$slug}' → v{$meta->version}" );
+			$pkg = $resolved_pkg;
+			$this->log( 'Resolved package URL: ' . ( $pkg ? $pkg : 'EMPTY' ) );
+
+			$trans->response[ $file ] = (object) [
+			    'id'           => $file,
+			    'name'         => $c['name'],
+			    'slug'         => $slug,
+			    'plugin'       => $file,
+			    'new_version'  => $meta->version ?? $c['version'],
+			    'package'      => $pkg,
+			    'url'          => $meta->homepage ?? '',
+			    'tested'       => $meta->tested ?? '',
+			    'requires'     => $meta->requires ?? $meta->min_wp_version ?? '',
+			    'requires_php' => $meta->requires_php ?? '',
+			    'sections'     => (array) ( $meta->sections ?? [] ),
+			    'icons'        => (array) ( $meta->icons ?? [] ),
+			    'banners'      => (array) ( $meta->banners ?? [] ),
+			    'compatibility'=> new \stdClass(),
+			];
 
             unset( $trans->no_update[ $file ] );
             return $trans;
@@ -839,6 +881,19 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
                 return $trans;
             }
 
+            // Backfill download_url for compatibility (some servers return package/download_link/etc)
+			$resolved_pkg = $this->resolve_download_url( $meta );
+
+			if ( $resolved_pkg && empty( $meta->download_url ) ) {
+			    $meta->download_url = $resolved_pkg;
+			}
+
+			// Debug line (only logs when debug enabled)
+			$this->log( 'Resolved package URL (normalized): ' . ( $resolved_pkg ? $resolved_pkg : 'EMPTY' ) );
+
+
+
+
             // Build base info used for both "no update" and "update available"
             $base_info = [
                 'theme'        => $slug,
@@ -873,10 +928,13 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
             }
 
             $this->log( " Injecting theme update '{$c['slug']}' → v{$meta->version}" );
-            $trans->response[ $slug ] = array_merge( $base_info, [
-                'new_version' => $meta->version ?? $current,
-                'package'     => $meta->download_url ?? '',
-            ] );
+            $pkg = $resolved_pkg;
+			$this->log( 'Resolved package URL: ' . ( $pkg ? $pkg : 'EMPTY' ) );
+
+			$trans->response[ $slug ] = array_merge( $base_info, [
+			    'new_version' => $meta->version ?? $current,
+			    'package'     => $pkg,
+			] );
 
             unset( $trans->no_update[ $slug ] );
             return $trans;
@@ -914,7 +972,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
                 'tested'          => $meta->tested         ?? '',
                 'requires_php'    => $meta->requires_php   ?? '', // “Requires PHP: x.x or higher”
                 'last_updated'    => $meta->last_updated   ?? '',
-                'download_link'   => $meta->download_url   ?? '',
+                'download_link'   => $this->resolve_download_url( $meta ),
                 'homepage'        => $meta->homepage       ?? '',
                 'sections'        => $sections,
                 'icons'           => isset( $meta->icons )   ? (array) $meta->icons   : [],
@@ -962,19 +1020,23 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
                 'tested'        => $meta->tested ?? '',
                 'requires'      => $meta->min_wp_version ?? '',
                 'sections'      => [ 'changelog' => $changelog ],
-                'download_link' => $meta->download_url ?? '',
+                'download_link' => $this->resolve_download_url( $meta ),
                 'icons'         => isset( $meta->icons )   ? (array) $meta->icons   : [],
                 'banners'       => isset( $meta->banners ) ? (array) $meta->banners : [],
             ];
         }
 
         /** Optional debug logger. */
-        private function log( $msg ) {
-            if ( apply_filters( 'updater_enable_debug', false ) ) {
-                error_log( "[Updater] {$msg}" );
-                do_action( 'uupd/log', $msg, $this->config['slug'] ?? '' );
-            }
-        }
+		private function log( $msg ) {
+		    $slug = $this->config['slug'] ?? '';
+
+		    // Pass slug to filter so debug can be enabled/disabled per item.
+		    if ( apply_filters( 'updater_enable_debug', false, $slug ) ) {
+		        error_log( "[Updater][{$slug}] {$msg}" );
+		        do_action( 'uupd/log', $msg, $slug );
+		    }
+		}
+
 
         private function is_github_repo_root_url( $url ) {
 		    $url = trim( (string) $url );
