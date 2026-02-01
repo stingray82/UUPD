@@ -232,7 +232,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V1' ) ) {
 
     class UUPD_Updater_V1 {
 
-        const VERSION = '1.4.0-Beta.2'; // Change as needed
+        const VERSION = '1.4.0'; // Change as needed
 
         /** @var array Configuration settings */
         private $config;
