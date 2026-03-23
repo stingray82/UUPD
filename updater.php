@@ -338,7 +338,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 
 	class UUPD_Updater_V2 {
 
-		const VERSION = '2.0.0';
+		const VERSION = '2.0.0-alpha.1';
 
 		/** @var array Configuration settings */
 		private $config;
