@@ -28,6 +28,45 @@ WordPress.org.
 
  
 
+🧪 UUPD 2.0 Alpha (Preview)
+--------------------------
+
+⚠️ This is an alpha release and not production-ready
+
+UUPD 2.0 is a major architectural rewrite introducing:
+
+- Vendor + slug identity (no more collisions)
+- Scoped filters (vendor/slug)
+- Vendor-aware caching
+- Improved GitHub handling
+
+Breaking Changes:
+
+- Requires 'vendor'
+- No slug-only filters
+- Not backwards compatible
+
+**Example:**
+
+```
+
+
+v1:
+\UUPD\V1\UUPD_Updater_V1::register([
+    'slug' => 'my-plugin',
+]);
+```
+
+```
+v2:
+\UUPD\V2\UUPD_Updater_V2::register([
+    'vendor' => 'my-company',
+    'slug'   => 'my-plugin',
+]);
+```
+
+
+
 📚 Additional Documentation
 --------------------------
 
