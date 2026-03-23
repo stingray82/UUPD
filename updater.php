@@ -41,10 +41,10 @@
  * Important upgrade notes from V1:
  *
  *   • `vendor` is now REQUIRED
- *   • Core filters are now scoped by vendor + slug
+ *   • Core filters now support layered resolution: base, vendor-wide, and vendor + slug scoped
  *   • Cache keys are vendor-aware by default
  *   • Manual checks are vendor-aware
- *   • No slug-only compatibility layer is included for filters
+ *   • Slug-only filter naming is not supported; use base, vendor-wide, or vendor + slug filters
  *
  * Existing V1-style slug-only registrations must be updated before using V2.
  *
@@ -135,11 +135,36 @@
  *   screenshots        Optional screenshots array
  *   screenshot         Optional single screenshot URL
  *
- * ───────────────────────── Scoped Filters ─────────────────────────
+ * ───────────────────────── Filter Hierarchy ─────────────────────────
  *
- * UUPD 2.0 uses vendor + slug scoped filters.
+ * UUPD 2.0 supports layered filter resolution for flexibility during
+ * development, testing, fleet-wide overrides, and per-product exceptions.
+ *
+ * Filters are applied in this order:
+ *
+ *   1) Base/global filter:
+ *        uupd/<filter>
+ *
+ *   2) Vendor-wide filter:
+ *        uupd/<filter>/<vendor>
+ *
+ *   3) Fully scoped filter:
+ *        uupd/<filter>/<vendor>/<slug>
+ *
+ * Later filters receive the result of earlier ones and may override them.
  *
  * Example:
+ *
+ *   add_filter( 'uupd/server_url', function( $url, $vendor, $slug ) {
+ *       if ( $vendor === 'tdlab' ) {
+ *           return 'https://updates.example.com/';
+ *       }
+ *       return $url;
+ *   }, 10, 3 );
+ *
+ *   add_filter( 'uupd/server_url/tdlab', function( $url, $vendor, $slug ) {
+ *       return 'https://staging.example.com/';
+ *   }, 10, 3 );
  *
  *   add_filter( 'uupd/server_url/tdlab/my-plugin', function( $url, $vendor, $slug ) {
  *       return 'https://example.com/custom-endpoint.json';
@@ -147,16 +172,38 @@
  *
  * Common filters:
  *
+ *   uupd/filter_config
+ *   uupd/filter_config/<vendor>
  *   uupd/filter_config/<vendor>/<slug>
+ *   uupd/server_url
+ *   uupd/server_url/<vendor>
  *   uupd/server_url/<vendor>/<slug>
+ *   uupd/cache_prefix
+ *   uupd/cache_prefix/<vendor>
  *   uupd/cache_prefix/<vendor>/<slug>
+ *   uupd/github_token_override
+ *   uupd/github_token_override/<vendor>
  *   uupd/github_token_override/<vendor>/<slug>
+ *   uupd/icons
+ *   uupd/icons/<vendor>
  *   uupd/icons/<vendor>/<slug>
+ *   uupd/banners
+ *   uupd/banners/<vendor>
  *   uupd/banners/<vendor>/<slug>
+ *   uupd/screenshots
+ *   uupd/screenshots/<vendor>
  *   uupd/screenshots/<vendor>/<slug>
+ *   uupd/screenshot
+ *   uupd/screenshot/<vendor>
  *   uupd/screenshot/<vendor>/<slug>
+ *   uupd_success_cache_ttl
+ *   uupd_success_cache_ttl/<vendor>
  *   uupd_success_cache_ttl/<vendor>/<slug>
+ *   uupd_fetch_remote_error_ttl
+ *   uupd_fetch_remote_error_ttl/<vendor>
  *   uupd_fetch_remote_error_ttl/<vendor>/<slug>
+ *   uupd/manual_check_redirect
+ *   uupd/manual_check_redirect/<vendor>
  *   uupd/manual_check_redirect/<vendor>/<slug>
  *
  * ───────────────────────── Actions ─────────────────────────
@@ -305,10 +352,17 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 		}
 
 		/**
-		 * Apply a vendor+slug scoped filter.
+		 * Apply a layered filter using base, vendor-wide, and vendor+slug scopes.
 		 *
-		 * The callback receives:
-		 *   - $default
+		 * Filters are resolved in this order:
+		 *   1) {$filter_base}
+		 *   2) {$filter_base}/{$vendor}
+		 *   3) {$filter_base}/{$vendor}/{$slug}
+		 *
+		 * Each later filter receives the value returned by the previous stage.
+		 *
+		 * Callbacks receive:
+		 *   - $value
 		 *   - $vendor
 		 *   - $slug
 		 *   - $instance_key
@@ -320,16 +374,35 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 		 * @return mixed
 		 */
 		private static function apply_filters_scoped( $filter_base, $default, $vendor, $slug ) {
-			$vendor = self::sanitize_identity_part( $vendor );
-			$slug   = self::sanitize_identity_part( $slug );
+			$vendor       = self::sanitize_identity_part( $vendor );
+			$slug         = self::sanitize_identity_part( $slug );
+			$instance_key = self::build_instance_key( $vendor, $slug );
 
-			return apply_filters(
-				"{$filter_base}/{$vendor}/{$slug}",
+			$value = apply_filters(
+				$filter_base,
 				$default,
 				$vendor,
 				$slug,
-				self::build_instance_key( $vendor, $slug )
+				$instance_key
 			);
+
+			$value = apply_filters(
+				"{$filter_base}/{$vendor}",
+				$value,
+				$vendor,
+				$slug,
+				$instance_key
+			);
+
+			$value = apply_filters(
+				"{$filter_base}/{$vendor}/{$slug}",
+				$value,
+				$vendor,
+				$slug,
+				$instance_key
+			);
+
+			return $value;
 		}
 
 		/**
