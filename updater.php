@@ -323,6 +323,45 @@
  *     define( 'WP_DEBUG', true );
  *     define( 'WP_DEBUG_LOG', true );
  *
+ * ───────────────────────── Release Channels ─────────────────────────
+ *
+ * UUPD supports hierarchical release channels for controlling which
+ * versions are considered valid updates.
+ *
+ * Channels are cumulative, meaning each level includes all previous ones:
+ *
+ *   stable      → Stable releases only (default)
+ *   dev         → Stable + dev
+ *   alpha       → Stable + dev + alpha
+ *   beta        → Stable + dev + alpha + beta
+ *   rc          → Stable + dev + alpha + beta + rc
+ *   prerelease  → All versions (stable + all pre-release types)
+ *
+ * Example:
+ *
+ *   'release_channel' => 'beta'
+ *
+ *   Allows updates from:
+ *     - stable
+ *     - dev
+ *     - alpha
+ *     - beta
+ *
+ *   But excludes:
+ *     - rc (if considered higher than beta in your system)
+ *
+ * To allow ALL non-stable releases, use:
+ *
+ *   'release_channel' => 'prerelease'
+ *
+ * Note:
+ *   • If `release_channel` is not set, it defaults to:
+ *       - 'stable' when allow_prerelease = false
+ *       - 'prerelease' when allow_prerelease = true
+ *
+ *   • `allow_prerelease` acts as a convenience flag but
+ *     `release_channel` provides full control.
+ *
  * ───────────────────────── Summary ─────────────────────────
  *
  * • Fetches update metadata from JSON or GitHub Releases
