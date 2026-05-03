@@ -97,11 +97,10 @@
  *      https://api.github.com/repos/<owner>/<repo>/releases/latest
  *
  *    • Public repos work without a token
- *    • Private repos and/or private assets REQUIRE a GitHub
- * Note: GitHub Releases mode currently uses /releases/latest, which returns
- * GitHub’s latest non-prerelease release. Pre-release channel handling is mainly
- * intended for JSON/private metadata mode unless GitHub fetch logic is extended
- * to inspect all releases.
+ *    • Private repos and/or private assets REQUIRE a GitHub Token
+ * Note: GitHub Releases mode uses /releases/latest, which returns GitHub’s
+ * latest non-prerelease release. For GitHub-hosted prerelease support, use
+ * JSON/static metadata mode with stable_version and prerelease_version fields.
  *
  * ───────────────────────── Mode Auto-Detection ─────────────────────────
  *
@@ -615,6 +614,51 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 			return '';
 		}
 
+		private function select_metadata_track( $meta ) {
+			if ( ! is_object( $meta ) ) {
+				return $meta;
+			}
+
+			if ( ! empty( $meta->stable_version ) ) {
+				$meta->version = $meta->stable_version;
+			}
+
+			if ( ! empty( $meta->stable_download_url ) ) {
+				$meta->download_url  = $meta->stable_download_url;
+				$meta->package       = $meta->stable_download_url;
+				$meta->download_link = $meta->stable_download_url;
+			}
+
+			$allow_prerelease = ! empty( $this->config['allow_prerelease'] );
+
+			if ( ! $allow_prerelease ) {
+				$meta->selected_release_channel = 'stable';
+				return $meta;
+			}
+
+			$stable_version = $meta->version ?? '';
+			$pre_version    = $meta->prerelease_version ?? '';
+
+			if ( '' === (string) $pre_version ) {
+				return $meta;
+			}
+
+			if ( version_compare( $this->normalize_version( $pre_version ), $this->normalize_version( $stable_version ), '>' ) ) {
+				$meta->version = $pre_version;
+
+				if ( ! empty( $meta->prerelease_download_url ) ) {
+					$meta->download_url  = $meta->prerelease_download_url;
+					$meta->package       = $meta->prerelease_download_url;
+					$meta->download_link = $meta->prerelease_download_url;
+				}
+
+				$meta->selected_release_channel = $meta->prerelease_channel ?? 'prerelease';
+			}
+
+			return $meta;
+}
+
+
 
 		/** Fetch metadata JSON from remote server and cache it. */
 		private function fetch_remote() {
@@ -957,6 +1001,8 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 				return $trans;
 			}
 
+			$meta = $this->select_metadata_track( $meta );
+
 			$resolved_pkg = $this->resolve_download_url( $meta );
 
 			if ( $resolved_pkg && empty( $meta->download_url ) ) {
@@ -1143,6 +1189,8 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 				$this->log( 'No metadata found, skipping update logic.' );
 				return $trans;
 			}
+
+			$meta = $this->select_metadata_track( $meta );
 
 			$resolved_pkg = $this->resolve_download_url( $meta );
 
