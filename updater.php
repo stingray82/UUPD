@@ -97,7 +97,11 @@
  *      https://api.github.com/repos/<owner>/<repo>/releases/latest
  *
  *    • Public repos work without a token
- *    • Private repos and/or private assets REQUIRE a GitHub token
+ *    • Private repos and/or private assets REQUIRE a GitHub
+ * Note: GitHub Releases mode currently uses /releases/latest, which returns
+ * GitHub’s latest non-prerelease release. Pre-release channel handling is mainly
+ * intended for JSON/private metadata mode unless GitHub fetch logic is extended
+ * to inspect all releases.
  *
  * ───────────────────────── Mode Auto-Detection ─────────────────────────
  *
@@ -156,20 +160,20 @@
  *
  * Example:
  *
- *   add_filter( 'uupd/server_url', function( $url, $vendor, $slug ) {
+ *   add_filter( 'uupd/server_url', function( $url, $vendor, $slug, $instance_key ) {
  *       if ( $vendor === 'tdlab' ) {
  *           return 'https://updates.example.com/';
  *       }
  *       return $url;
- *   }, 10, 3 );
+ *   }, 10, 4 );
  *
- *   add_filter( 'uupd/server_url/tdlab', function( $url, $vendor, $slug ) {
+ *   add_filter( 'uupd/server_url/tdlab', function( $url,  $vendor, $slug, $instance_key ) {
  *       return 'https://staging.example.com/';
- *   }, 10, 3 );
+ *   }, 10, 4 );
  *
- *   add_filter( 'uupd/server_url/tdlab/my-plugin', function( $url, $vendor, $slug ) {
+ *   add_filter( 'uupd/server_url/tdlab/my-plugin', function( $url, $vendor, $slug, $instance_key ) {
  *       return 'https://example.com/custom-endpoint.json';
- *   }, 10, 3 );
+ *   }, 10, 4 );
  *
  * Common filters:
  *
@@ -206,6 +210,16 @@
  *   uupd/manual_check_redirect
  *   uupd/manual_check_redirect/<vendor>
  *   uupd/manual_check_redirect/<vendor>/<slug>
+ *   uupd/allow_prerelease
+ *   uupd/allow_prerelease/<vendor>
+ *   uupd/allow_prerelease/<vendor>/<slug>
+ *   uupd/remote_url
+ *   uupd/remote_url/<vendor>
+ *   uupd/remote_url/<vendor>/<slug>
+ *   uupd/metadata_result
+ *   uupd/metadata_result/<vendor>
+ *   uupd/metadata_result/<vendor>/<slug>
+ *
  *
  * ───────────────────────── Actions ─────────────────────────
  *
@@ -478,10 +492,17 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 		 *   @type string $server           Base URL, JSON metadata URL, or GitHub repo root URL.
 		 *   @type string $plugin_file      Optional plugin_basename(__FILE__) for plugins.
 		 *   @type bool   $allow_prerelease Optional whether prerelease versions are allowed.
+		 *   @type string $release_channel Optional release channel: stable|dev|alpha|beta|rc|prerelease.
 		 *   @type string $cache_prefix     Optional transient prefix. Default 'uupd_<vendor>__'.
 		 *   @type string $mode             Optional mode: auto|json|github_release.
 		 *   @type string $github_token     Optional GitHub token for private release access.
 		 *   @type string $github_asset_name Optional preferred release asset filename.
+		 *   @type string $mode              Optional mode: auto|json|github_release.
+		 *   @type string $github_asset_name Optional preferred GitHub release asset filename.
+		 *   @type array  $icons             Optional icons array.
+		 *   @type array  $banners           Optional banners array.
+		 *   @type array  $screenshots       Optional screenshots array.
+		 *   @type string $screenshot        Optional single screenshot URL.
 		 * }
 		 */
 		public function __construct( array $config ) {
