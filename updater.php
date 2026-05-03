@@ -129,6 +129,7 @@
  *   github_asset_name  Preferred asset name for GitHub Releases
  *   mode               auto|json|github_release
  *   allow_prerelease   true|false
+ *   release_channel    Optional channel: stable|dev|alpha|beta|rc|prerelease
  *   cache_prefix       Transient key prefix. Default: 'uupd_<vendor>__'
  *   icons              Optional icons array
  *   banners            Optional banners array
@@ -338,7 +339,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 
 	class UUPD_Updater_V2 {
 
-		const VERSION = '2.0.0-beta';
+		const VERSION = '2.0.0-beta.1';
 
 		/** @var array Configuration settings */
 		private $config;
@@ -554,6 +555,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 			return '';
 		}
 
+
 		/** Fetch metadata JSON from remote server and cache it. */
 		private function fetch_remote() {
 			$c          = $this->config;
@@ -564,7 +566,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 			if ( empty( $c['server'] ) ) {
 				$this->log( 'No server URL configured — skipping fetch and caching an error state.' );
 				$ttl = self::apply_filters_scoped( 'uupd_fetch_remote_error_ttl', 6 * HOUR_IN_SECONDS, $vendor, $slug_plain );
-				set_transient( $prefix . $slug_plain . '_error', time(), $ttl );
+				set_transient( $this->get_metadata_cache_key() . '_error', time(), $ttl );
 
 				self::do_metadata_failure_actions( $vendor, $slug_plain, [
 					'vendor'  => $vendor,
@@ -585,12 +587,15 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 				$url = $c['server'];
 			} else {
 				$separator = strpos( $c['server'], '?' ) === false ? '?' : '&';
-				$url = untrailingslashit( $c['server'] ) . $separator . "action=get_metadata&slug={$slug_qs}&key={$key_qs}&domain={$host_qs}";
+				$allow_prerelease_qs = ! empty( $c['allow_prerelease'] ) ? '1' : '0';
+				$release_channel_qs  = rawurlencode( $this->get_release_channel() );
+
+				$url = untrailingslashit( $c['server'] ) . $separator . "action=get_metadata&slug={$slug_qs}&key={$key_qs}&domain={$host_qs}&allow_prerelease={$allow_prerelease_qs}&release_channel={$release_channel_qs}";
 			}
 
 			$url = self::apply_filters_scoped( 'uupd/remote_url', $url, $vendor, $slug_plain );
 
-			$failure_cache_key = $prefix . $slug_plain . '_error';
+			$failure_cache_key = $this->get_metadata_cache_key() . '_error';
 
 			$this->log( " Fetching metadata: {$url}" );
 			do_action( 'uupd/before_fetch_remote', $vendor, $slug_plain, $c );
@@ -658,7 +663,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 			$meta = self::apply_filters_scoped( 'uupd/metadata_result', $meta, $vendor, $slug_plain );
 
 			$ttl = self::apply_filters_scoped( 'uupd_success_cache_ttl', 6 * HOUR_IN_SECONDS, $vendor, $slug_plain );
-			set_transient( $prefix . $slug_plain, $meta, $ttl );
+			set_transient( $this->get_metadata_cache_key(), $meta, $ttl );
 			delete_transient( $failure_cache_key );
 			$this->log( " Cached metadata '{$slug_plain}' → v" . ( $meta->version ?? 'unknown' ) );
 		}
@@ -780,7 +785,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 			$slug      = $c['slug'];
 			$vendor    = $c['vendor'] ?? '';
 			$prefix    = $c['cache_prefix'] ?? 'uupd_' . $vendor . '__';
-			$cache_id  = $prefix . $slug;
+			$cache_id = $this->get_metadata_cache_key();
 			$error_key = $cache_id . '_error';
 
 			$this->log( "Plugin-update hook for '{$slug}'" );
@@ -967,7 +972,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 			$slug      = $c['real_slug'] ?? $c['slug'];
 			$vendor    = $c['vendor'] ?? '';
 			$prefix    = $c['cache_prefix'] ?? 'uupd_' . $vendor . '__';
-			$cache_id  = $prefix . $c['slug'];
+			$cache_id = $this->get_metadata_cache_key();
 			$error_key = $cache_id . '_error';
 
 			$this->log( "Theme-update hook for '{$c['slug']}'" );
@@ -1144,8 +1149,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 				return $res;
 			}
 
-			$prefix = $c['cache_prefix'] ?? 'uupd_' . ( $c['vendor'] ?? '' ) . '__';
-			$meta   = get_transient( $prefix . $c['slug'] );
+			$meta = get_transient( $this->get_metadata_cache_key() );
 			if ( ! $meta ) {
 				return $res;
 			}
@@ -1186,8 +1190,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 				return $res;
 			}
 
-			$prefix = $c['cache_prefix'] ?? 'uupd_' . ( $c['vendor'] ?? '' ) . '__';
-			$meta   = get_transient( $prefix . $c['slug'] );
+			$meta = get_transient( $this->get_metadata_cache_key() );
 			if ( ! $meta ) {
 				return $res;
 			}
@@ -1401,6 +1404,28 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 			return $release->zipball_url ?? '';
 		}
 
+		private function get_release_channel() {
+			$channel = isset( $this->config['release_channel'] )
+				? strtolower( sanitize_key( (string) $this->config['release_channel'] ) )
+				: '';
+
+			if ( in_array( $channel, [ 'stable', 'dev', 'alpha', 'beta', 'rc', 'prerelease' ], true ) ) {
+				return $channel;
+			}
+
+			return ! empty( $this->config['allow_prerelease'] ) ? 'prerelease' : 'stable';
+		}
+
+		private function get_metadata_cache_key() {
+			$c       = $this->config;
+			$vendor  = $c['vendor'] ?? '';
+			$slug    = $c['slug'] ?? '';
+			$prefix  = $c['cache_prefix'] ?? 'uupd_' . $vendor . '__';
+			$channel = $this->get_release_channel();
+
+			return $prefix . $slug . '_' . $channel;
+		}
+
 		private static function ends_with( $haystack, $needle ) {
 			if ( function_exists( 'str_ends_with' ) ) {
 				return \str_ends_with( (string) $haystack, (string) $needle );
@@ -1490,6 +1515,12 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 					}
 
 					$prefix = $config['cache_prefix'] ?? 'uupd_' . $vendor . '__';
+					foreach ( [ 'stable', 'dev', 'alpha', 'beta', 'rc', 'prerelease' ] as $channel ) {
+						delete_transient( $prefix . $slug . '_' . $channel );
+						delete_transient( $prefix . $slug . '_' . $channel . '_error' );
+					}
+
+					// Legacy cache cleanup.
 					delete_transient( $prefix . $slug );
 					delete_transient( $prefix . $slug . '_error' );
 
