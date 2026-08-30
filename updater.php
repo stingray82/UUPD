@@ -212,6 +212,12 @@
  *   uupd/allow_prerelease
  *   uupd/allow_prerelease/<vendor>
  *   uupd/allow_prerelease/<vendor>/<slug>
+ *   uupd/request_params
+ *   uupd/request_params/<vendor>
+ *   uupd/request_params/<vendor>/<slug>
+ *   uupd/request_headers
+ *   uupd/request_headers/<vendor>
+ *   uupd/request_headers/<vendor>/<slug>
  *   uupd/remote_url
  *   uupd/remote_url/<vendor>
  *   uupd/remote_url/<vendor>/<slug>
@@ -391,7 +397,7 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 
 	class UUPD_Updater_V2 {
 
-		const VERSION = '2.0.1';
+		const VERSION = '2.0.2';
 
 		/** @var array Configuration settings */
 		private $config;
@@ -681,25 +687,41 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 				return;
 			}
 
-			$slug_qs              = rawurlencode( $slug_plain );
-			$key_qs               = rawurlencode( isset( $c['key'] ) ? $c['key'] : '' );
-			$host_qs              = rawurlencode( wp_parse_url( untrailingslashit( home_url() ), PHP_URL_HOST ) );
-			$installed_version_qs = rawurlencode( isset( $c['version'] ) ? (string) $c['version'] : '' );
-
 			$is_json = self::ends_with( $c['server'], '.json' );
 
 			if ( $is_json ) {
+				// Static JSON endpoints are intentionally used exactly as configured.
+				// Request parameter filters apply only to dynamic metadata-server requests.
 				$url = $c['server'];
 			} else {
-				$separator = strpos( $c['server'], '?' ) === false ? '?' : '&';
-				$allow_prerelease_qs = ! empty( $c['allow_prerelease'] ) ? '1' : '0';
-				$release_channel_qs  = rawurlencode( $this->get_release_channel() );
+				$request_params = [
+					'action'            => 'get_metadata',
+					'slug'              => $slug_plain,
+					'installed_version' => isset( $c['version'] ) ? (string) $c['version'] : '',
+					'key'               => isset( $c['key'] ) ? (string) $c['key'] : '',
+					'domain'            => wp_parse_url( untrailingslashit( home_url() ), PHP_URL_HOST ),
+					'allow_prerelease'  => ! empty( $c['allow_prerelease'] ) ? '1' : '0',
+					'release_channel'   => $this->get_release_channel(),
+				];
 
-				// Send the currently installed version so compatible servers can select a version-specific update branch.
-				// This is additive: static .json endpoints and GitHub Releases mode remain unchanged.
-				$url = untrailingslashit( $c['server'] ) . $separator . "action=get_metadata&slug={$slug_qs}&installed_version={$installed_version_qs}&key={$key_qs}&domain={$host_qs}&allow_prerelease={$allow_prerelease_qs}&release_channel={$release_channel_qs}";
+				/**
+				 * Allow integrations to add, replace, or remove dynamic metadata query parameters.
+				 *
+				 * Examples include a public key, site identifier, licence tier, or other
+				 * server-specific values that UUPD itself does not need to understand.
+				 *
+				 * Filters are applied at the normal UUPD scopes:
+				 *   uupd/request_params
+				 *   uupd/request_params/<vendor>
+				 *   uupd/request_params/<vendor>/<slug>
+				 */
+				$request_params = self::apply_filters_scoped( 'uupd/request_params', $request_params, $vendor, $slug_plain );
+				$request_params = is_array( $request_params ) ? $request_params : [];
+
+				$url = add_query_arg( $request_params, untrailingslashit( $c['server'] ) );
 			}
 
+			// Keep remote_url as the final URL-level escape hatch for backwards compatibility.
 			$url = self::apply_filters_scoped( 'uupd/remote_url', $url, $vendor, $slug_plain );
 
 			$failure_cache_key = $this->get_metadata_cache_key() . '_error';
@@ -709,11 +731,29 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 			do_action( "uupd/before_fetch_remote/{$vendor}/{$slug_plain}", $c );
 			$this->log( "→ Triggered action: uupd/before_fetch_remote for '{$slug_plain}'" );
 
+			$request_headers = [
+				'Accept' => 'application/json',
+			];
+
+			/**
+			 * Allow integrations to add or override metadata request headers.
+			 *
+			 * This is the preferred extension point for credentials or other values
+			 * that should not be exposed in URLs or routine URL logging.
+			 *
+			 * Filters are applied at the normal UUPD scopes:
+			 *   uupd/request_headers
+			 *   uupd/request_headers/<vendor>
+			 *   uupd/request_headers/<vendor>/<slug>
+			 */
+			$request_headers = self::apply_filters_scoped( 'uupd/request_headers', $request_headers, $vendor, $slug_plain );
+			$request_headers = is_array( $request_headers ) ? $request_headers : [];
+
 			$resp = wp_remote_get(
 				$url,
 				[
 					'timeout' => 15,
-					'headers' => [ 'Accept' => 'application/json' ],
+					'headers' => $request_headers,
 				]
 			);
 
