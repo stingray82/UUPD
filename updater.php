@@ -681,9 +681,10 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 				return;
 			}
 
-			$slug_qs = rawurlencode( $slug_plain );
-			$key_qs  = rawurlencode( isset( $c['key'] ) ? $c['key'] : '' );
-			$host_qs = rawurlencode( wp_parse_url( untrailingslashit( home_url() ), PHP_URL_HOST ) );
+			$slug_qs              = rawurlencode( $slug_plain );
+			$key_qs               = rawurlencode( isset( $c['key'] ) ? $c['key'] : '' );
+			$host_qs              = rawurlencode( wp_parse_url( untrailingslashit( home_url() ), PHP_URL_HOST ) );
+			$installed_version_qs = rawurlencode( isset( $c['version'] ) ? (string) $c['version'] : '' );
 
 			$is_json = self::ends_with( $c['server'], '.json' );
 
@@ -694,7 +695,9 @@ if ( ! class_exists( __NAMESPACE__ . '\UUPD_Updater_V2' ) ) {
 				$allow_prerelease_qs = ! empty( $c['allow_prerelease'] ) ? '1' : '0';
 				$release_channel_qs  = rawurlencode( $this->get_release_channel() );
 
-				$url = untrailingslashit( $c['server'] ) . $separator . "action=get_metadata&slug={$slug_qs}&key={$key_qs}&domain={$host_qs}&allow_prerelease={$allow_prerelease_qs}&release_channel={$release_channel_qs}";
+				// Send the currently installed version so compatible servers can select a version-specific update branch.
+				// This is additive: static .json endpoints and GitHub Releases mode remain unchanged.
+				$url = untrailingslashit( $c['server'] ) . $separator . "action=get_metadata&slug={$slug_qs}&installed_version={$installed_version_qs}&key={$key_qs}&domain={$host_qs}&allow_prerelease={$allow_prerelease_qs}&release_channel={$release_channel_qs}";
 			}
 
 			$url = self::apply_filters_scoped( 'uupd/remote_url', $url, $vendor, $slug_plain );
